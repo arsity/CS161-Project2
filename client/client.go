@@ -102,18 +102,18 @@ func someUsefulThings() {
 type User struct {
 	UsernameHash []byte
 	// the keys for the public key encription
-	EncryptionPublicKey userlib.PKEEncKey
-	EncrptionPrivateKey userlib.PKEDecKey
+	EncryptionPublicKey  userlib.PKEEncKey
+	EncryptionPrivateKey userlib.PKEDecKey
 	// the keys for the digital signature
-	DSSignKey userlib.DSSignKey
+	DSSignKey   userlib.DSSignKey
 	DSVerifykey userlib.DSVerifyKey
 
 	// the uuid of the file owns and its corrsponding PrivateKey
-	OwnedFiles map[uuid.UUID] []byte
+	OwnedFiles map[uuid.UUID][]byte
 
 	// the sharklinksthat has been accept
 	// the input is a hash of the file name and output is the UUID of its corresponding share link
-	SharedFiles map[[64]byte] uuid.UUID
+	SharedFiles map[[64]byte]uuid.UUID
 
 	// You can add other attributes here if you want! But note that in order for attributes to
 	// be included when this struct is serialized to/from JSON, they must be capitalized.
@@ -123,34 +123,91 @@ type User struct {
 	// begins with a lowercase letter).
 }
 
-type File struct{
-	// the struct of the file 
+type File struct {
+	// the struct of the file
 
 	//the list of contents
 	Contents []uuid.UUID
-
 }
 
-type ShareLink struct{
+type ShareLink struct {
 	// the struct of the share link
 
-	FromUserHash [64] byte
-	ToUserHash [64] byte
-	FileUUID uuid.UUID
-	FileKey [] byte
+	FromUserHash [64]byte
+	ToUserHash   [64]byte
+	FileUUID     uuid.UUID
+	FileKey      []byte
 }
-
-
 
 // NOTE: The following methods have toy (insecure!) implementations.
 
 func InitUser(username string, password string) (userdataptr *User, err error) {
+	// check if the username is empty
+	if username == "" {
+		return userdataptr, errors.New("The given username is empty!")
+	}
+
 	var userdata User
-	userdata.Username = username
-	return &userdata, nil
+	//store the name hash
+	UsernameHash := userlib.Hash([]byte(username))
+	userdata.UsernameHash = UsernameHash
+
+	//get the keys for public key enription
+	userdata.EncryptionPublicKey, userdata.EncryptionPrivateKey, _ = userlib.PKEKeyGen()
+
+	//store the public key in key store
+	store_error := userlib.KeystoreSet(username+"Encription", userdata.EncryptionPublicKey)
+
+	// if the username already exists
+	if store_error != nil {
+		return userdataptr, errors.New("The given username already exists!")
+	}
+
+	// get the keys for the digital signature
+	userdata.DSSignKey, userdata.DSVerifykey, _ = userlib.DSKeyGen()
+
+	store_error = userlib.KeystoreSet(username+"Signature", userdata.DSVerifykey)
+
+	// if the username already exists
+	if store_error != nil {
+		return userdataptr, errors.New("The given username already exists!")
+	}
+
+	userdata.OwnedFiles = make(map[uuid.UUID][]byte)
+	userdata.SharedFiles = make(map[[64]byte]uuid.UUID)
+
+	// get the UUID of user struct
+	UUID_data, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For User Struct"))
+
+	// get the symmetric encryption key
+	user_encryption_key := userlib.Argon2Key([]byte(password), []byte(username), 16)
+
+	// encrypte the user struct
+
+	userdataptr = &userdata
+
+	user_struct_bytes := json.Marshaler(&userdata)
+
+	iv := userlib.RandomBytes(16)
+
+	user_struct_ciper := userlib.SymEnc(user_encryption_key, iv, user_struct_bytes)
+
+	userlib.DatastoreSet(UUID_data, user_struct_ciper)
+
+	// generate the mac to provide integrity
+	UUID_mac, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For Mac"))
+
+	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
+
+	mac, _ := userlib.HMACEval(mac_key, user_struct_ciper)
+
+	userlib.DatastoreSet(UUID_mac, mac)
+
+	return userdataptr, nil
 }
 
 func GetUser(username string, password string) (userdataptr *User, err error) {
+
 	var userdata User
 	userdataptr = &userdata
 	return userdataptr, nil
