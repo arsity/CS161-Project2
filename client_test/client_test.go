@@ -32,6 +32,7 @@ func TestSetupAndExecution(t *testing.T) {
 // Global Variables (feel free to add more!)
 // ================================================
 const defaultPassword = "password"
+const anotherPassword = "anotherPassword"
 const emptyString = ""
 const contentOne = "Bitcoin is Nick's favorite "
 const contentTwo = "digital "
@@ -245,7 +246,194 @@ var _ = Describe("Client Tests", func() {
 
     })
 
-    Describe("Advanced Tests", func() {
+    Describe("Advanced Tests, proper error return for client API", func() {
 
+        Specify("client API error: InitUser.", func() {
+            userlib.DebugMsg("Initializing user Alice.")
+            _, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Initializing user Alice once again, error expected.")
+            _, err = client.InitUser("alice", defaultPassword)
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Initializing user with empty username, error expected.")
+            _, err = client.InitUser(emptyString, defaultPassword)
+            Expect(err).NotTo(BeNil())
+        })
+
+        Specify("client API error: GetUser.", func() {
+            userlib.DebugMsg("Initializing user Alice.")
+            _, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Getting user Bob, error expected.")
+            _, err = client.GetUser("bob", defaultPassword)
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Getting user Alice with wrong password, error expected.")
+            _, err = client.GetUser("alice", anotherPassword)
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Modify user profile of Alice, error expected.")
+            datastore := userlib.DatastoreGetMap()
+            for _, val := range datastore {
+                val[0] ^= 0xff
+                _, err = client.GetUser("alice", defaultPassword)
+                Expect(err).NotTo(BeNil())
+                val[0] ^= 0xff                                    // revoke changes
+                _, err = client.GetUser("alice", defaultPassword) // should succeed
+                Expect(err).To(BeNil())
+            }
+
+        })
+
+        Specify("client API error: LoadFile.", func() {
+            // for testing use
+            userProfileUUID := map[userlib.UUID]bool{}
+            var fileUUID []userlib.UUID
+
+            userlib.DebugMsg("Initializing user Alice.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            for id := range userlib.DatastoreGetMap() {
+                userProfileUUID[id] = true
+            }
+
+            userlib.DebugMsg("Storing file data: %s", contentOne)
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+            for id := range userlib.DatastoreGetMap() {
+                _, pre := userProfileUUID[id]
+                if !pre {
+                    fileUUID = append(fileUUID, id)
+                }
+            }
+
+            userlib.DebugMsg("Loading file with invalid filename, error expected.")
+            _, err := alice.LoadFile("invalidFilename")
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Loading file without integrity, error expected.")
+            datastore := userlib.DatastoreGetMap()
+            for _, id := range fileUUID {
+                datastore[id][0] ^= 0xff
+                _, err := alice.LoadFile(aliceFile)
+                Expect(err).NotTo(BeNil())
+                datastore[id][0] ^= 0xff // revoke changes
+                Expect(err).To(BeNil())  // should succeed
+            }
+        })
+
+        Specify("client API error: AppendToFile", func() {
+            userlib.DebugMsg("Initializing user Alice.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Storing file data: %s", contentOne)
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Appending file with invalid filename, error expected.")
+            err = alice.AppendToFile(bobFile, []byte(contentTwo))
+            Expect(err).NotTo(BeNil())
+        })
+
+        Specify("client API error: CreateInvitation.", func() {
+            userlib.DebugMsg("Initializing user Alice.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Storing file data: %s", contentOne)
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice creating invite for not-exist user, error expected.")
+            _, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Initializing user Bob.")
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice creating invite using invalid filename, error expected.")
+            _, err = alice.CreateInvitation(bobFile, "bob")
+            Expect(err).NotTo(BeNil())
+        })
+
+        Specify("client API error: AcceptInvitation.", func() {
+            userlib.DebugMsg("Initializing users Alice and Bob.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Both Alice and Bob storing file %s with content: %s", aliceFile, contentOne)
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            err = bob.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice creating invite for Bob for file %s", aliceFile)
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Bob accepting invite with existing filename %s, error expected.", aliceFile)
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Bob accepting invite with tampered share link, error expected.")
+            datastore := userlib.DatastoreGetMap()
+            datastore[invite][0] ^= 0xff
+            err = bob.AcceptInvitation("alice", invite, bobFile)
+            Expect(err).NotTo(BeNil())
+            datastore[invite][0] ^= 0xff                         // revoke changes
+            err = bob.AcceptInvitation("alice", invite, bobFile) // should succeed
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice storing file %s with content: %s", bobFile, contentOne)
+            err = alice.StoreFile(bobFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice creating invite for Bob for file %s", bobFile)
+            invite, err = alice.CreateInvitation(bobFile, "bob")
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice revoking Bob's access from %s.", bobFile)
+            err = alice.RevokeAccess(bobFile, "bob")
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Bob accepting revoked share link, error expected.")
+            err = bob.AcceptInvitation("alice", invite, charlesFile)
+            Expect(err).NotTo(BeNil())
+        })
+
+        Specify("client API error: RevokeAccess.", func() {
+            userlib.DebugMsg("Initializing user Alice.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Initializing user Bob.")
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice storing file %s with content: %s", aliceFile, contentOne)
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice creating share link of file %s.", aliceFile)
+            _, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Alice revoking a share link with invalid filename, error expected.")
+            err = alice.RevokeAccess("invalidFile", "bob")
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Alice revoking a share link with invalid recipient, error expected.")
+            err = alice.RevokeAccess(aliceFile, "charles")
+            Expect(err).NotTo(BeNil())
+        })
     })
 })
