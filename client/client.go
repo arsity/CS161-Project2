@@ -186,7 +186,10 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	userdataptr = &userdata
 
-	user_struct_bytes := json.Marshaler(&userdata)
+	user_struct_bytes,err := json.Marshaler(&userdata)
+	if err != nil{
+		return userdataptr, err
+	}
 
 	iv := userlib.RandomBytes(16)
 
@@ -194,7 +197,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	userlib.DatastoreSet(UUID_data, user_struct_ciper)
 
-	// generate the mac to provide integrity
+	// generate the mac for the user struct to provide integrity
 	UUID_mac, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For Mac"))
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
@@ -203,13 +206,69 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	userlib.DatastoreSet(UUID_mac, mac)
 
+	// store the hash for the username and password
+	UUID_password, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length "))
+
+	password_hash := userlib.Hash([]byte(password))
+	userlib.DatastoreSet(UUID_password,password_hash)
+
 	return userdataptr, nil
 }
 
 func GetUser(username string, password string) (userdataptr *User, err error) {
-
 	var userdata User
 	userdataptr = &userdata
+
+	// first, check if the user exists
+	UUID_password, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length "))
+	password_hash, ok := userlib.DatastoreGet(UUID_password)
+
+	if ok == false{
+		return userdataptr, errors.New("The given User doesn't exist")
+	}
+
+	// then check if the password is correct
+	new_password_hash := userlib.Hash([]byte(password))
+	correct_flag := userlib.HMACEqual(password_hash,new_password_hash)
+	if correct_flag == false{
+		return userdataptr,errors.New("Uncorrect Password!")
+	}
+
+	// then check the integrity
+	UUID_mac, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For Mac"))
+
+	UUID_data, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For User Struct"))
+
+	mac, ok := userlib.DatastoreGet(UUID_mac)
+	if ok == false{
+		return userdataptr, errors.New("The mac of User struct doesn't exist")
+	}
+	data, ok := userlib.DatastoreGet(UUID_data)
+	if ok == false{
+		return userdataptr, errors.New("The data of User struct doesn't exist")
+	}
+
+	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
+
+	new_mac,_ := userlib.HMACEval(mac_key, data)
+
+	integrity_flag := userlib.HMACEqual(mac,new_mac)
+
+	if integrity_flag == false{
+		return userdataptr, errors.New("Warning! The User struct has been tampered!")
+	}
+
+	// everything is checked, get the user struct
+
+	user_encryption_key := userlib.Argon2Key([]byte(password), []byte(username), 16)
+
+	user_struct_bytes := userlib.SymDec(user_encryption_key, data)
+
+	err = json.Unmarshal(user_struct_bytes, &userdata)
+	if err != nil{
+		return userdataptr, err
+	}
+	
 	return userdataptr, nil
 }
 
