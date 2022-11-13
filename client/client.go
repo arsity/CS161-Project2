@@ -1,5 +1,7 @@
 package client
 
+// package main
+
 // CS 161 Project 2
 
 // You MUST NOT change these default imports. ANY additional imports
@@ -162,6 +164,12 @@ type ShareLink struct {
 
 // NOTE: The following methods have toy (insecure!) implementations.
 
+func getUUIDbytes(str string) (result []byte) {
+	hash := userlib.Hash([]byte(str))
+
+	return hash[:16]
+}
+
 func InitUser(username string, password string) (userdataptr *User, err error) {
 	// check if the username is empty
 	if username == "" {
@@ -227,7 +235,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userlib.DatastoreSet(UUID_filespace_mac, filespace_mac)
 
 	// get the UUID of user struct
-	UUID_data, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For User Struct"))
+	UUID_data, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For User Struct"))
 
 	// get the symmetric encryption key
 	user_encryption_key := userlib.Argon2Key([]byte(password), []byte(username), 16)
@@ -248,7 +256,8 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userlib.DatastoreSet(UUID_data, user_struct_ciper)
 
 	// generate the mac for the user struct to provide integrity
-	UUID_mac, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For Mac"))
+	UUID_mac, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For Mac"))
+	//fmt.Printf("%b",[]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For Mac"))
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
 
@@ -257,11 +266,12 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userlib.DatastoreSet(UUID_mac, mac)
 
 	// store the hash for the username and password
-	UUID_password, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length "))
+	UUID_password, _ := uuid.FromBytes(getUUIDbytes(username))
 
 	password_hash := userlib.Hash([]byte(password))
 	userlib.DatastoreSet(UUID_password, password_hash)
 
+	// fmt.Print(UUID_data,UUID_mac,"\n")
 	return userdataptr, nil
 }
 
@@ -270,7 +280,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	userdataptr = &userdata
 
 	// first, check if the user exists
-	UUID_password, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length "))
+	UUID_password, _ := uuid.FromBytes(getUUIDbytes(username))
 	password_hash, ok := userlib.DatastoreGet(UUID_password)
 
 	if ok == false {
@@ -285,9 +295,11 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	}
 
 	// then check the integrity
-	UUID_mac, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For Mac"))
+	UUID_mac, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For Mac"))
 
-	UUID_data, _ := uuid.FromBytes([]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For User Struct"))
+	UUID_data, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For User Struct"))
+
+	// fmt.Print(UUID_data,UUID_mac,"\n")
 
 	mac, ok := userlib.DatastoreGet(UUID_mac)
 	if ok == false {
@@ -297,6 +309,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	if ok == false {
 		return userdataptr, errors.New("The data of User struct doesn't exist")
 	}
+
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
 
@@ -628,3 +641,12 @@ func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid
 func (userdata *User) RevokeAccess(filename string, recipientUsername string) error {
 	return nil
 }
+
+// func main(){
+// 	x :=[]byte("hi")
+// 	y := []byte("hello")
+// 	a,_ := uuid.FromBytes(x)
+
+// 	b,_ := uuid.FromBytes(y)
+// 	fmt.Print(a,b)
+// }
