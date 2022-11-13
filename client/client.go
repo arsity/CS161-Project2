@@ -205,7 +205,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	filespace_encrpt_key = filespace_encrpt_key[:16]
 
 	var filespace FileSpace
-	filespace.OwnedFilesUUIDs = make(map[[64]byte][]byte)
+	filespace.OwnedFilesUUIDs = make(map[[64]byte]uuid.UUID)
 	filespace.OwnedFilesKeys = make(map[[64]byte][]byte)
 	filespace.SharedFiles = make(map[[64]byte]uuid.UUID)
 
