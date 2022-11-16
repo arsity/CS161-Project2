@@ -194,7 +194,8 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
 
             userlib.DebugMsg("Alice storing file %s with content: %s", aliceFile, contentOne)
-            alice.StoreFile(aliceFile, []byte(contentOne))
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
 
             userlib.DebugMsg("Alice creating invite for Bob for file %s, and Bob accepting invite under name %s.", aliceFile, bobFile)
 
@@ -292,6 +293,36 @@ var _ = Describe("Client Tests", func() {
                 Expect(err).To(BeNil())
             }
 
+        })
+
+        Specify("client API error: StoreFile", func() {
+            userlib.DebugMsg("Initialize user and file.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("give and revoke bob's access")
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).To(BeNil())
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).To(BeNil())
+            read, err := bob.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(read).To(Equal([]byte(contentOne)))
+            err = bob.StoreFile(aliceFile, []byte(contentTwo))
+            Expect(err).To(BeNil())
+            err = alice.RevokeAccess(aliceFile, "bob")
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Now bob try to make malicious load")
+            err = bob.StoreFile(aliceFile, []byte(contentThree))
+            Expect(err).NotTo(BeNil())
+            read, err = alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(read).To(Equal([]byte(contentTwo)))
         })
 
         Specify("client API error: LoadFile.", func() {
@@ -633,14 +664,16 @@ var _ = Describe("Client Tests", func() {
             }
 
             bw1 := measureBandwidth(func() {
-                alice.AppendToFile(aliceFile, []byte(content100))
+                err = alice.AppendToFile(aliceFile, []byte(content100))
+                Expect(err).To(BeNil())
             })
 
             err = alice.AppendToFile(aliceFile, []byte(content10000000))
             Expect(err).To(BeNil())
 
             bw2 := measureBandwidth(func() {
-                alice.AppendToFile(aliceFile, []byte(content100))
+                err = alice.AppendToFile(aliceFile, []byte(content100))
+                Expect(err).To(BeNil())
             })
 
             if bw2-bw1 < 100 {
