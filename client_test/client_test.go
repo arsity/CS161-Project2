@@ -704,7 +704,8 @@ var _ = Describe("Client Tests", func() {
                 Expect(err).To(BeNil())
             })
 
-            if bw2-bw1 < 100 {
+            // warning: over-cover
+            if bw2-bw1 < 1 {
                 err = nil
             } else {
                 err = errors.New("bandwidth test failed")
@@ -814,7 +815,7 @@ var _ = Describe("Client Tests", func() {
         })
     })
 
-    // over-cover
+    // warning: over-cover
     Describe("Multi-session and tampered", func() {
 
         // probably not over-cover
