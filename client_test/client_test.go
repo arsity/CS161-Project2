@@ -816,6 +816,8 @@ var _ = Describe("Client Tests", func() {
 
     // over-cover
     Describe("Multi-session and tampered", func() {
+
+        // probably not over-cover
         Specify("Single-user & Multi-session with tampered", func() {
             aliceDesktop, err = client.InitUser("alice", defaultPassword)
             Expect(err).To(BeNil())
@@ -833,7 +835,8 @@ var _ = Describe("Client Tests", func() {
             }
         })
 
-        Specify("Multi-user with tempered", func() {
+        // probably over-cover
+        Specify("Multi-user with tampered", func() {
             alice, err = client.InitUser("alice", defaultPassword)
             Expect(err).To(BeNil())
             bob, err = client.InitUser("bob", defaultPassword)
@@ -868,6 +871,24 @@ var _ = Describe("Client Tests", func() {
                 Expect(err).NotTo(BeNil())
                 val[0] ^= 0xff
             }
+        })
+
+        // should be good
+        Specify("rob the share link", func() {
+            alice, err = client.InitUser("alice", defaultPassword)
+            bob, err = client.InitUser("bob", defaultPassword)
+            eve, err = client.InitUser("eve", defaultPassword)
+
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+
+            err = eve.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).NotTo(BeNil())
+
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+
+            err = eve.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).NotTo(BeNil())
         })
     })
 
