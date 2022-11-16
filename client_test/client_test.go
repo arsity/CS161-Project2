@@ -797,6 +797,41 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
             Expect(data).To(Equal([]byte(contentFour)))
         })
+
+        Specify("proper action for append: zero-length appending", func() {
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            err = alice.AppendToFile(aliceFile, []byte(""))
+            Expect(err).To(BeNil())
+
+            read, err := alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(read).To(Equal([]byte(contentOne)))
+        })
+    })
+
+    // over-cover
+    Describe("Multi-session and tampered", func() {
+        Specify("Single-user & Multi-session with tampered", func() {
+            aliceDesktop, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            aliceLaptop, err = client.GetUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            err = aliceDesktop.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            for _, val := range userlib.DatastoreGetMap() {
+                val[0] ^= 0xff
+                _, err = aliceLaptop.LoadFile(aliceFile)
+                Expect(err).NotTo(BeNil())
+                val[0] ^= 0xff
+            }
+        })
     })
 
     //Describe("Advanced Tests, IND-CPA", func() {
@@ -810,29 +845,6 @@ var _ = Describe("Client Tests", func() {
     //        err = alice.StoreFile(aliceFile, []byte(contentOne))
     //        Expect(err).To(BeNil())
     //        datastore2 := userlib.DatastoreGetMap()
-    //
-    //        userlib.DebugMsg("Store the same again.")
-    //        err = alice.StoreFile(aliceFile, []byte(contentOne))
-    //        Expect(err).To(BeNil())
-    //        datastore3 := userlib.DatastoreGetMap()
-    //
-    //        var contentList1 [][]byte
-    //        var contentList2 [][]byte
-    //        var persistList []uuid.UUID
-    //
-    //        for id, val := range datastore2 {
-    //            _, pre := datastore1[id]
-    //            if !pre {
-    //                contentList1 = append(contentList1, val)
-    //                persistList = append(persistList, id)
-    //            }
-    //        }
-    //        for id, val := range datastore3 {
-    //            _, pre := datastore1[id]
-    //            if !pre {
-    //                contentList2 = append(contentList2, val)
-    //            }
-    //        }
     //
     //    })
     //})
