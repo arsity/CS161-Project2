@@ -651,4 +651,67 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
         })
     })
+
+    Describe("Advanced Tests, proper action for client API", func() {
+        Specify("proper action for client API: StoreFile.", func() {
+            userlib.DebugMsg("Initializing user and file.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Restore, overwritten expected.")
+            err = alice.StoreFile(aliceFile, []byte(contentTwo))
+            Expect(err).To(BeNil())
+            data, err := alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte(contentTwo)))
+
+            userlib.DebugMsg("try to store empty sequence.")
+            err = alice.StoreFile(aliceFile, []byte(""))
+            Expect(err).To(BeNil())
+            data, err = alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte("")))
+        })
+    })
+
+    //Describe("Advanced Tests, IND-CPA", func() {
+    //    Specify("IND-CPA test for client API: StoreFile", func() {
+    //        userlib.DebugMsg("Initializing user.")
+    //        alice, err = client.InitUser("alice", defaultPassword)
+    //        Expect(err).To(BeNil())
+    //        datastore1 := userlib.DatastoreGetMap()
+    //
+    //        userlib.DebugMsg("Store file first time.")
+    //        err = alice.StoreFile(aliceFile, []byte(contentOne))
+    //        Expect(err).To(BeNil())
+    //        datastore2 := userlib.DatastoreGetMap()
+    //
+    //        userlib.DebugMsg("Store the same again.")
+    //        err = alice.StoreFile(aliceFile, []byte(contentOne))
+    //        Expect(err).To(BeNil())
+    //        datastore3 := userlib.DatastoreGetMap()
+    //
+    //        var contentList1 [][]byte
+    //        var contentList2 [][]byte
+    //        var persistList []uuid.UUID
+    //
+    //        for id, val := range datastore2 {
+    //            _, pre := datastore1[id]
+    //            if !pre {
+    //                contentList1 = append(contentList1, val)
+    //                persistList = append(persistList, id)
+    //            }
+    //        }
+    //        for id, val := range datastore3 {
+    //            _, pre := datastore1[id]
+    //            if !pre {
+    //                contentList2 = append(contentList2, val)
+    //            }
+    //        }
+    //
+    //    })
+    //})
+
 })
