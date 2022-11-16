@@ -24,14 +24,6 @@ import (
     "github.com/cs161-staff/project2-starter-code/client"
 )
 
-// Helper function to measure bandwidth of a particular operation
-measureBandwidth := func (probe func())(bandwidth int) {
-    before := userlib.DatastoreGetBandwidth()
-    probe()
-    after := userlib.DatastoreGetBandwidth()
-    return after - before
-}
-
 func TestSetupAndExecution(t *testing.T) {
     RegisterFailHandler(Fail)
     RunSpecs(t, "Client Tests")
