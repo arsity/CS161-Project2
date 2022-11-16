@@ -832,6 +832,43 @@ var _ = Describe("Client Tests", func() {
                 val[0] ^= 0xff
             }
         })
+
+        Specify("Multi-user with tempered", func() {
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
+
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            for _, val := range userlib.DatastoreGetMap() {
+                val[0] ^= 0xff
+                _, err = alice.CreateInvitation(aliceFile, "bob")
+                Expect(err).NotTo(BeNil())
+                val[0] ^= 0xff
+            }
+
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).To(BeNil())
+
+            for _, val := range userlib.DatastoreGetMap() {
+                val[0] ^= 0xff
+                err = bob.AcceptInvitation("alice", invite, aliceFile)
+                Expect(err).NotTo(BeNil())
+                val[0] ^= 0xff
+            }
+
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            for _, val := range userlib.DatastoreGetMap() {
+                val[0] ^= 0xff
+                _, err = bob.LoadFile(aliceFile)
+                Expect(err).NotTo(BeNil())
+                val[0] ^= 0xff
+            }
+        })
     })
 
     //Describe("Advanced Tests, IND-CPA", func() {
