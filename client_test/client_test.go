@@ -657,6 +657,8 @@ var _ = Describe("Client Tests", func() {
             userlib.DebugMsg("Initializing user and file.")
             alice, err = client.InitUser("alice", defaultPassword)
             Expect(err).To(BeNil())
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
             err = alice.StoreFile(aliceFile, []byte(contentOne))
             Expect(err).To(BeNil())
 
@@ -673,6 +675,30 @@ var _ = Describe("Client Tests", func() {
             data, err = alice.LoadFile(aliceFile)
             Expect(err).To(BeNil())
             Expect(data).To(Equal([]byte("")))
+
+            userlib.DebugMsg("restore for next test.")
+            err = alice.StoreFile(aliceFile, []byte(contentThree))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("create share link to bob")
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).To(BeNil())
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("bob could properly read")
+            data, err = bob.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte(contentThree)))
+
+            userlib.DebugMsg("alice overwrite the file")
+            err = alice.StoreFile(aliceFile, []byte(contentFour))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("bob should still have proper content")
+            data, err = bob.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte(contentFour)))
         })
     })
 
