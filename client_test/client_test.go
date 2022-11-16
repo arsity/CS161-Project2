@@ -676,6 +676,13 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
             Expect(data).To(Equal([]byte("")))
 
+            userlib.DebugMsg("try to store something with zero-length filename.")
+            err = alice.StoreFile("", []byte(contentFive))
+            Expect(err).To(BeNil())
+            data, err = alice.LoadFile("")
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte(contentFive)))
+
             userlib.DebugMsg("restore for next test.")
             err = alice.StoreFile(aliceFile, []byte(contentThree))
             Expect(err).To(BeNil())
