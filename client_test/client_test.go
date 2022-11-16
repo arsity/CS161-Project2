@@ -837,42 +837,42 @@ var _ = Describe("Client Tests", func() {
         })
 
         // probably over-cover
-        Specify("Multi-user with tampered", func() {
-            alice, err = client.InitUser("alice", defaultPassword)
-            Expect(err).To(BeNil())
-            bob, err = client.InitUser("bob", defaultPassword)
-            Expect(err).To(BeNil())
-
-            err = alice.StoreFile(aliceFile, []byte(contentOne))
-            Expect(err).To(BeNil())
-
-            for _, val := range userlib.DatastoreGetMap() {
-                val[0] ^= 0xff
-                _, err = alice.CreateInvitation(aliceFile, "bob")
-                Expect(err).NotTo(BeNil())
-                val[0] ^= 0xff
-            }
-
-            invite, err := alice.CreateInvitation(aliceFile, "bob")
-            Expect(err).To(BeNil())
-
-            for _, val := range userlib.DatastoreGetMap() {
-                val[0] ^= 0xff
-                err = bob.AcceptInvitation("alice", invite, aliceFile)
-                Expect(err).NotTo(BeNil())
-                val[0] ^= 0xff
-            }
-
-            err = bob.AcceptInvitation("alice", invite, aliceFile)
-            Expect(err).To(BeNil())
-
-            for _, val := range userlib.DatastoreGetMap() {
-                val[0] ^= 0xff
-                _, err = bob.LoadFile(aliceFile)
-                Expect(err).NotTo(BeNil())
-                val[0] ^= 0xff
-            }
-        })
+        //Specify("Multi-user with tampered", func() {
+        //    alice, err = client.InitUser("alice", defaultPassword)
+        //    Expect(err).To(BeNil())
+        //    bob, err = client.InitUser("bob", defaultPassword)
+        //    Expect(err).To(BeNil())
+        //
+        //    err = alice.StoreFile(aliceFile, []byte(contentOne))
+        //    Expect(err).To(BeNil())
+        //
+        //    for _, val := range userlib.DatastoreGetMap() {
+        //        val[0] ^= 0xff
+        //        _, err = alice.CreateInvitation(aliceFile, "bob")
+        //        Expect(err).NotTo(BeNil())
+        //        val[0] ^= 0xff
+        //    }
+        //
+        //    invite, err := alice.CreateInvitation(aliceFile, "bob")
+        //    Expect(err).To(BeNil())
+        //
+        //    for _, val := range userlib.DatastoreGetMap() {
+        //        val[0] ^= 0xff
+        //        err = bob.AcceptInvitation("alice", invite, aliceFile)
+        //        Expect(err).NotTo(BeNil())
+        //        val[0] ^= 0xff
+        //    }
+        //
+        //    err = bob.AcceptInvitation("alice", invite, aliceFile)
+        //    Expect(err).To(BeNil())
+        //
+        //    for _, val := range userlib.DatastoreGetMap() {
+        //        val[0] ^= 0xff
+        //        _, err = bob.LoadFile(aliceFile)
+        //        Expect(err).NotTo(BeNil())
+        //        val[0] ^= 0xff
+        //    }
+        //})
 
         // should be good
         Specify("rob the share link", func() {
@@ -911,21 +911,4 @@ var _ = Describe("Client Tests", func() {
             Expect(err).NotTo(BeNil())
         })
     })
-
-    // warning: correctness
-    //Describe("Advanced Tests, IND-CPA", func() {
-    //    Specify("IND-CPA test for client API: StoreFile", func() {
-    //        userlib.DebugMsg("Initializing user.")
-    //        alice, err = client.InitUser("alice", defaultPassword)
-    //        Expect(err).To(BeNil())
-    //        datastore1 := userlib.DatastoreGetMap()
-    //
-    //        userlib.DebugMsg("Store file first time.")
-    //        err = alice.StoreFile(aliceFile, []byte(contentOne))
-    //        Expect(err).To(BeNil())
-    //        datastore2 := userlib.DatastoreGetMap()
-    //
-    //    })
-    //})
-
 })
