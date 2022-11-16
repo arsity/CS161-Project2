@@ -7,6 +7,7 @@ import (
     // Some imports use an underscore to prevent the compiler from complaining
     // about unused imports.
     _ "encoding/hex"
+    "errors"
     _ "errors"
     _ "strconv"
     _ "strings"
@@ -37,6 +38,11 @@ const emptyString = ""
 const contentOne = "Bitcoin is Nick's favorite "
 const contentTwo = "digital "
 const contentThree = "cryptocurrency!"
+const contentFour = "I love CS 161!"
+const contentFive = "Peyrin is a nice guy."
+
+const content100 = string('a' * 100)
+const content10000000 = string('a' * 10000000)
 
 // ================================================
 // Describe(...) blocks help you organize your tests
@@ -51,12 +57,12 @@ var _ = Describe("Client Tests", func() {
     var alice *client.User
     var bob *client.User
     var charles *client.User
-    // var doris *client.User
-    // var eve *client.User
-    // var frank *client.User
-    // var grace *client.User
-    // var horace *client.User
-    // var ira *client.User
+    var doris *client.User
+    var eve *client.User
+    var frank *client.User
+    var grace *client.User
+    var horace *client.User
+    var ira *client.User
 
     // These declarations may be useful for multi-session testing.
     var alicePhone *client.User
@@ -438,6 +444,211 @@ var _ = Describe("Client Tests", func() {
             userlib.DebugMsg("Alice revoking a share link with invalid recipient, error expected.")
             err = alice.RevokeAccess(aliceFile, "charles")
             Expect(err).NotTo(BeNil())
+        })
+    })
+
+    Describe("Advanced Tests, access management for the file", func() {
+        Specify("Tree structure with multiple leaves of access", func() {
+            userlib.DebugMsg("Initializing users.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
+            charles, err = client.InitUser("charles", defaultPassword)
+            Expect(err).To(BeNil())
+            doris, err = client.InitUser("doris", defaultPassword)
+            Expect(err).To(BeNil())
+            eve, err = client.InitUser("eve", defaultPassword)
+            Expect(err).To(BeNil())
+            frank, err = client.InitUser("frank", defaultPassword)
+            Expect(err).To(BeNil())
+            grace, err = client.InitUser("grace", defaultPassword)
+            Expect(err).To(BeNil())
+            horace, err = client.InitUser("horace", defaultPassword)
+            Expect(err).To(BeNil())
+            ira, err = client.InitUser("ira", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Initializing the file with with user alice.")
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Creating the origin tree structure access of file.")
+
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).To(BeNil())
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).To(BeNil())
+            invite, err = alice.CreateInvitation(aliceFile, "eve")
+            Expect(err).To(BeNil())
+            err = eve.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            invite, err = bob.CreateInvitation(aliceFile, "charles")
+            Expect(err).To(BeNil())
+            err = charles.AcceptInvitation("bob", invite, aliceFile)
+            Expect(err).To(BeNil())
+            invite, err = bob.CreateInvitation(aliceFile, "doris")
+            Expect(err).To(BeNil())
+            err = doris.AcceptInvitation("bob", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            invite, err = eve.CreateInvitation(aliceFile, "frank")
+            Expect(err).To(BeNil())
+            err = frank.AcceptInvitation("eve", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Let doris make changes and check consistency.")
+            err = doris.AppendToFile(aliceFile, []byte(contentTwo))
+            Expect(err).To(BeNil())
+
+            expectedContent := []byte(contentOne + contentTwo)
+
+            readContent, err := charles.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = bob.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = eve.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = frank.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            userlib.DebugMsg("Let alice revoke bob's access and then check access.")
+            err = alice.RevokeAccess(aliceFile, "bob")
+            Expect(err).To(BeNil())
+
+            err = frank.AppendToFile(aliceFile, []byte(contentThree))
+            Expect(err).To(BeNil())
+
+            _, err = doris.LoadFile(aliceFile)
+            Expect(err).NotTo(BeNil())
+
+            invite, err = eve.CreateInvitation(aliceFile, "grace")
+            Expect(err).To(BeNil())
+            err = grace.AcceptInvitation("eve", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            invite, err = alice.CreateInvitation(aliceFile, "horace")
+            Expect(err).To(BeNil())
+            err = horace.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            invite, err = horace.CreateInvitation(aliceFile, "ira")
+            Expect(err).To(BeNil())
+            err = ira.AcceptInvitation("horace", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Check consistency again.")
+            err = grace.AppendToFile(aliceFile, []byte(contentFour))
+            Expect(err).To(BeNil())
+
+            err = ira.AppendToFile(aliceFile, []byte(contentFive))
+            Expect(err).To(BeNil())
+
+            expectedContent = []byte(contentOne + contentTwo + contentThree + contentFour + contentFive)
+
+            readContent, err = alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = eve.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = frank.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = grace.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = horace.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+
+            readContent, err = ira.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(readContent).To(Equal(expectedContent))
+        })
+        Specify("Isolation of access management across different file", func() {
+            userlib.DebugMsg("Initialzing users.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            bob, err = client.InitUser("bob", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Creating files.")
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            Expect(err).To(BeNil())
+            err = alice.StoreFile(bobFile, []byte(contentTwo))
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Making proper access.")
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+            Expect(err).To(BeNil())
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Testing isolation of access.")
+            err = bob.AppendToFile(aliceFile, []byte(contentTwo))
+            Expect(err).To(BeNil())
+            err = bob.AppendToFile(bobFile, []byte(contentThree))
+            Expect(err).NotTo(BeNil())
+
+            data, err := alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte(contentOne + contentTwo)))
+
+        })
+    })
+
+    Describe("Advanced Tests, bandwidth", func() {
+        Specify("Bandwidth tests for client API: AppendToFile", func() {
+            userlib.DebugMsg("Initializing user.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Initializing files.")
+            err = alice.StoreFile(aliceFile, []byte(""))
+            Expect(err).To(BeNil())
+
+            // Helper function to measure bandwidth of a particular operation
+            measureBandwidth := func(probe func()) (bandwidth int) {
+                before := userlib.DatastoreGetBandwidth()
+                probe()
+                after := userlib.DatastoreGetBandwidth()
+                return after - before
+            }
+
+            bw1 := measureBandwidth(func() {
+                alice.AppendToFile(aliceFile, []byte(content100))
+            })
+
+            err = alice.AppendToFile(aliceFile, []byte(content10000000))
+            Expect(err).To(BeNil())
+
+            bw2 := measureBandwidth(func() {
+                alice.AppendToFile(aliceFile, []byte(content100))
+            })
+
+            if bw2-bw1 < 100 {
+                err = nil
+            } else {
+                err = errors.New("bandwidth test failed")
+            }
+            Expect(err).To(BeNil())
         })
     })
 })
