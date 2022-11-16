@@ -317,7 +317,7 @@ var _ = Describe("Client Tests", func() {
             err = alice.RevokeAccess(aliceFile, "bob")
             Expect(err).To(BeNil())
 
-            userlib.DebugMsg("Now bob try to make malicious load")
+            userlib.DebugMsg("Now bob try to make malicious store")
             err = bob.StoreFile(aliceFile, []byte(contentThree))
             Expect(err).NotTo(BeNil())
             read, err = alice.LoadFile(aliceFile)
