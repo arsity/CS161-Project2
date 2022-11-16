@@ -704,8 +704,7 @@ var _ = Describe("Client Tests", func() {
                 Expect(err).To(BeNil())
             })
 
-            // warning: over-cover
-            if bw2-bw1 < 1 {
+            if bw2-bw1 < 100 {
                 err = nil
             } else {
                 err = errors.New("bandwidth test failed")
@@ -815,28 +814,8 @@ var _ = Describe("Client Tests", func() {
         })
     })
 
-    // warning: over-cover
     Describe("Multi-session and tampered", func() {
 
-        // probably not over-cover
-        //Specify("Single-user & Multi-session with tampered", func() {
-        //    aliceDesktop, err = client.InitUser("alice", defaultPassword)
-        //    Expect(err).To(BeNil())
-        //    aliceLaptop, err = client.GetUser("alice", defaultPassword)
-        //    Expect(err).To(BeNil())
-        //
-        //    err = aliceDesktop.StoreFile(aliceFile, []byte(contentOne))
-        //    Expect(err).To(BeNil())
-        //
-        //    for _, val := range userlib.DatastoreGetMap() {
-        //        val[0] ^= 0xff
-        //        _, err = aliceLaptop.LoadFile(aliceFile)
-        //        Expect(err).NotTo(BeNil())
-        //        val[0] ^= 0xff
-        //    }
-        //})
-
-        // should be good
         Specify("rob the share link", func() {
             alice, err = client.InitUser("alice", defaultPassword)
             bob, err = client.InitUser("bob", defaultPassword)
@@ -854,7 +833,6 @@ var _ = Describe("Client Tests", func() {
             Expect(err).NotTo(BeNil())
         })
 
-        // should be good
         Specify("substitute the share link", func() {
             alice, err = client.InitUser("alice", defaultPassword)
             bob, err = client.InitUser("bob", defaultPassword)
