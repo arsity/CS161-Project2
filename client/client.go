@@ -8,6 +8,7 @@ package client
 // may break the autograder!
 
 import (
+	"encoding/hex"
 	"encoding/json"
 
 	userlib "github.com/cs161-staff/project2-userlib"
@@ -127,20 +128,20 @@ type User struct {
 type FileSpace struct {
 
 	// the UUID of File struct
-	OwnedFilesUUIDs map[[64]byte]uuid.UUID
+	OwnedFilesUUIDs map[string]uuid.UUID
 
 	// the UUID of File struct Mac
-	OwnedFilesMacUUIDs map[[64]byte]uuid.UUID
+	OwnedFilesMacUUIDs map[string]uuid.UUID
 
 	// the key of File struct encription Key
-	OwnedFilesKeys map[[64]byte][]byte
+	OwnedFilesKeys map[string][]byte
 
 	// the key of File struct Mac Key
-	OwnedFilesMacKeys map[[64]byte][]byte
+	OwnedFilesMacKeys map[string][]byte
 
 	// the sharklinksthat has been accept
 	// the input is a hash of the file name and output is the UUID of its corresponding share link
-	SharedFiles map[[64]byte]uuid.UUID
+	SharedFiles map[string]uuid.UUID
 }
 
 type File struct {
@@ -213,10 +214,9 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	filespace_encrpt_key = filespace_encrpt_key[:16]
 
 	var filespace FileSpace
-	filespace.OwnedFilesUUIDs = make(map[[64]byte]uuid.UUID)
-	filespace.OwnedFilesKeys = make(map[[64]byte][]byte)
-	filespace.SharedFiles = make(map[[64]byte]uuid.UUID)
-
+	// filespace.OwnedFilesUUIDs = make(map[string]uuid.UUID)
+	// filespace.OwnedFilesKeys = make(map[string][]byte)
+	// filespace.SharedFiles = make(map[string]uuid.UUID)
 
 	// store the file space
 	UUID_filespace := uuid.New()
@@ -258,7 +258,7 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	// generate the mac for the user struct to provide integrity
 	UUID_mac, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For Mac"))
-	//fmt.Printf("%b",[]byte(username + "This is a sepatator to satisfy minimum 16 length " + password + "For Mac"))
+
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
 
@@ -272,7 +272,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	password_hash := userlib.Hash([]byte(password))
 	userlib.DatastoreSet(UUID_password, password_hash)
 
-	// fmt.Print(UUID_data,UUID_mac,"\n")
 	return userdataptr, nil
 }
 
@@ -285,14 +284,14 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	password_hash, ok := userlib.DatastoreGet(UUID_password)
 
 	if ok == false {
-		return userdataptr, errors.New("The given User doesn't exist")
+		return userdataptr, errors.New("the given User doesn't exist")
 	}
 
 	// then check if the password is correct
 	new_password_hash := userlib.Hash([]byte(password))
 	correct_flag := userlib.HMACEqual(password_hash, new_password_hash)
 	if correct_flag == false {
-		return userdataptr, errors.New("Uncorrect Password!")
+		return userdataptr, errors.New("uncorrect password")
 	}
 
 	// then check the integrity
@@ -300,7 +299,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 
 	UUID_data, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For User Struct"))
 
-	// fmt.Print(UUID_data,UUID_mac,"\n")
+
 
 	mac, ok := userlib.DatastoreGet(UUID_mac)
 	if ok == false {
@@ -310,7 +309,6 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	if ok == false {
 		return userdataptr, errors.New("The data of User struct doesn't exist")
 	}
-
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
 
@@ -341,13 +339,13 @@ func (userdata *User) CheckFileSpace() (err error) {
 	// fetch the mac and file space
 	filespace_ciper, ok := userlib.DatastoreGet(userdata.FileSpaceUUID)
 	if ok == false {
-		return errors.New("The filespace doesn't exist")
+		return errors.New("the filespace doesn't exist")
 	}
 
 	filespace_mac, ok := userlib.DatastoreGet(userdata.FileSpaceMacUUID)
 
 	if ok == false {
-		return errors.New("The filespace Mac doesn't exist")
+		return errors.New("the filespace Mac doesn't exist")
 	}
 
 	// check the mac ~
@@ -361,8 +359,9 @@ func (userdata *User) CheckFileSpace() (err error) {
 	integrity_flag := userlib.HMACEqual(filespace_mac, new_filespace_mac)
 
 	if integrity_flag == false {
-		return errors.New("The filespace has been tampered!")
+		return errors.New("the filespace has been tampered")
 	}
+
 
 	return nil
 }
@@ -381,13 +380,15 @@ func (userdata *User) GetFileSpace() (filespace FileSpace, err error) {
 	filespace_ciper, ok := userlib.DatastoreGet(userdata.FileSpaceUUID)
 
 	if ok == false {
-		return filespace, errors.New("The given filespace doesn't exist")
+		return filespace, errors.New("the given filespace doesn't exist")
 	}
 
 	// decript the filespace
+	filespace_bytes := userlib.SymDec(filespace_encrpt_key,filespace_ciper)
 
-	json.Unmarshal(filespace_ciper, &filespace)
+	json.Unmarshal(filespace_bytes, &filespace)
 
+	fmt.Print(filespace.OwnedFilesMacUUIDs,"\n")
 	return filespace, nil
 
 }
@@ -395,7 +396,7 @@ func (userdata *User) GetFileSpace() (filespace FileSpace, err error) {
 // update the mac and content of the file space
 func (userdata *User) UpdateFileSpace(filespace FileSpace) {
 
-	filespace_bytes, _ := json.Marshal(&filespace)
+	filespace_bytes, _ := json.Marshal(filespace)
 
 	filespace_encrpt_key, _ := userlib.HashKDF(userdata.FileRootKey, []byte("encription"))
 	filespace_encrpt_key = filespace_encrpt_key[:16]
@@ -413,16 +414,24 @@ func (userdata *User) UpdateFileSpace(filespace FileSpace) {
 
 	userlib.DatastoreSet(userdata.FileSpaceMacUUID, filespace_mac)
 
+
+	// some testing code
+	// var new FileSpace
+	// data,_ := userlib.DatastoreGet(userdata.FileSpaceUUID)
+	// json.Unmarshal(data,&new)
+
+	// fmt.Print(filespace.OwnedFilesUUIDs,"\n")
+	// fmt.Print(new.OwnedFilesUUIDs,"\n")
+
 }
 
 // store a new file
 func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	filespace, err := userdata.GetFileSpace()
-	filespace.OwnedFilesUUIDs = make(map[[64]byte]uuid.UUID)
-	filespace.OwnedFilesMacUUIDs = make(map[[64]byte]uuid.UUID)
-	filespace.OwnedFilesKeys = make(map[[64]byte][]byte)
-	filespace.OwnedFilesMacKeys = make(map[[64]byte][]byte)
-	
+	filespace.OwnedFilesUUIDs = make(map[string]uuid.UUID)
+	filespace.OwnedFilesMacUUIDs = make(map[string]uuid.UUID)
+	filespace.OwnedFilesKeys = make(map[string][]byte)
+	filespace.OwnedFilesMacKeys = make(map[string][]byte)
 
 	if err != nil {
 		return err
@@ -431,6 +440,8 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	var filename_hash [64]byte
 	copy(filename_hash[:], userlib.Hash([]byte(filename)))
 
+	filename_hash_string := hex.EncodeToString(filename_hash[:])
+
 	// generate keys
 	file_key, _ := userlib.HashKDF(userdata.FileRootKey, filename_hash[:])
 	mac_key, _ := userlib.HashKDF(userdata.FileRootKey, userlib.Hash([]byte(filename+"mac")))
@@ -438,13 +449,12 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	file_key = file_key[:16]
 	mac_key = mac_key[:16]
 
-
 	UUID_file := uuid.New()
-	// fmt.Print("1",filename_hash,"\n",UUID_file,"\n")
 
-	filespace.OwnedFilesKeys[filename_hash] = file_key
-	filespace.OwnedFilesUUIDs[filename_hash] = UUID_file
-	filespace.OwnedFilesMacKeys[filename_hash] = mac_key
+
+	filespace.OwnedFilesKeys[filename_hash_string] = file_key
+	filespace.OwnedFilesUUIDs[filename_hash_string] = UUID_file
+	filespace.OwnedFilesMacKeys[filename_hash_string] = mac_key
 
 	var newFile File
 
@@ -475,7 +485,14 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	UUID_file_strct_mac := uuid.New()
 	userlib.DatastoreSet(UUID_file_strct_mac, newFile_mac)
 
+	filespace.OwnedFilesMacUUIDs[filename_hash_string] = UUID_file_strct_mac
+
 	userdata.UpdateFileSpace(filespace)
+
+
+
+
+
 
 	return nil
 
@@ -486,36 +503,40 @@ func (filespace FileSpace) GetFileStruct(filename string) (file File, err error)
 	var filename_hash [64]byte
 	copy(filename_hash[:], userlib.Hash([]byte(filename)))
 
-	FileUUID := filespace.OwnedFilesUUIDs[filename_hash]
-	FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash]
-	FileKey := filespace.OwnedFilesKeys[filename_hash]
-	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash]
+	filename_hash_string := hex.EncodeToString(filename_hash[:])
+
+	FileUUID := filespace.OwnedFilesUUIDs[filename_hash_string]
+	FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash_string]
+	FileKey := filespace.OwnedFilesKeys[filename_hash_string]
+	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash_string]
 
 	// first, check if the File struct's integrity
-	// fmt.Print("1",filename_hash,"\n",FileUUID,"\n")
-	fmt.Print(filespace.OwnedFilesUUIDs,"\n")
+
+	// fmt.Print(FileUUID,"\n")
 
 	ciper_file, ok := userlib.DatastoreGet(FileUUID)
 	if ok == false {
-		return file, errors.New("The File struct doesn't exist!")
+		return file, errors.New("the File struct doesn't exist")
 	}
 
 	file_mac, ok := userlib.DatastoreGet(FileMacUUID)
 
+	// fmt.Print(file_mac,"\n")
 	if ok == false {
-		return file, errors.New("The File struct Mac doesn't exist!")
+		return file, errors.New("the File struct Mac doesn't exist")
 	}
 
 	new_file_mac, _ := userlib.HMACEval(FileMacKey, ciper_file)
 	file_struct_integrity := userlib.HMACEqual(file_mac, new_file_mac)
+	// fmt.Print(new_file_mac,"\n")
 
-	if file_struct_integrity == false {
-		return file, errors.New("The File struct Mac has been tampered!")
+	if ! file_struct_integrity  {
+		return file, errors.New("the File struct has been tampered")
 	}
 
 	// decript the file struct
 	bytes_file_struct := userlib.SymDec(FileKey, ciper_file)
-	json.Unmarshal(bytes_file_struct, file)
+	json.Unmarshal(bytes_file_struct, &file)
 
 	return file, nil
 }
@@ -555,10 +576,12 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 	copy(filename_hash[:], userlib.Hash([]byte(filename)))
 	filespace, err := userdata.GetFileSpace()
 
-	FileUUID := filespace.OwnedFilesUUIDs[filename_hash]
-	FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash]
-	FileKey := filespace.OwnedFilesKeys[filename_hash]
-	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash]
+	filename_hash_string := hex.EncodeToString(filename_hash[:])
+
+	FileUUID := filespace.OwnedFilesUUIDs[filename_hash_string]
+	FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash_string]
+	FileKey := filespace.OwnedFilesKeys[filename_hash_string]
+	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash_string]
 
 	if err != nil {
 		return err
@@ -602,11 +625,13 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 	var filename_hash [64]byte
 	copy(filename_hash[:], userlib.Hash([]byte(filename)))
+	filename_hash_string := hex.EncodeToString(filename_hash[:])
+
 	filespace, err := userdata.GetFileSpace()
 	// FileUUID := filespace.OwnedFilesUUIDs[filename_hash]
 	// FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash]
-	FileKey := filespace.OwnedFilesKeys[filename_hash]
-	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash]
+	FileKey := filespace.OwnedFilesKeys[filename_hash_string]
+	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash_string]
 
 	if err != nil {
 		return content, err
@@ -661,5 +686,5 @@ func (userdata *User) RevokeAccess(filename string, recipientUsername string) er
 // 	a,_ := uuid.FromBytes(x)
 
 // 	b,_ := uuid.FromBytes(y)
-// 	fmt.Print(a,b)
+
 // }
