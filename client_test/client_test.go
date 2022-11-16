@@ -384,6 +384,10 @@ var _ = Describe("Client Tests", func() {
             err = bob.AcceptInvitation("alice", invite, aliceFile)
             Expect(err).NotTo(BeNil())
 
+            userlib.DebugMsg("Bob accepting invite with unexpected user, error expected.")
+            err = bob.AcceptInvitation("charles", invite, bobFile)
+            Expect(err).NotTo(BeNil())
+
             userlib.DebugMsg("Bob accepting invite with tampered share link, error expected.")
             datastore := userlib.DatastoreGetMap()
             datastore[invite][0] ^= 0xff
