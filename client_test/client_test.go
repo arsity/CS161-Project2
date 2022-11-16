@@ -891,8 +891,28 @@ var _ = Describe("Client Tests", func() {
             err = eve.AcceptInvitation("alice", invite, aliceFile)
             Expect(err).NotTo(BeNil())
         })
+
+        // should be good
+        Specify("substitute the share link", func() {
+            alice, err = client.InitUser("alice", defaultPassword)
+            bob, err = client.InitUser("bob", defaultPassword)
+            eve, err = client.InitUser("eve", defaultPassword)
+
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
+            invite, err := alice.CreateInvitation(aliceFile, "bob")
+
+            err = eve.StoreFile(aliceFile, []byte(contentTwo))
+            inviteFake, err := eve.CreateInvitation(aliceFile, "bob")
+
+            datastore := userlib.DatastoreGetMap()
+            datastore[invite] = datastore[inviteFake]
+
+            err = bob.AcceptInvitation("alice", invite, aliceFile)
+            Expect(err).NotTo(BeNil())
+        })
     })
 
+    // warning: correctness
     //Describe("Advanced Tests, IND-CPA", func() {
     //    Specify("IND-CPA test for client API: StoreFile", func() {
     //        userlib.DebugMsg("Initializing user.")
