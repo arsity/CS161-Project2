@@ -653,11 +653,48 @@ var _ = Describe("Client Tests", func() {
     })
 
     Describe("Advanced Tests, proper action for client API", func() {
-        Specify("proper action for client API: StoreFile.", func() {
-            userlib.DebugMsg("Initializing user and file.")
+
+        Specify("proper action for user management 1: case-sensitive username", func() {
+            _, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+            _, err = client.InitUser("Alice", defaultPassword)
+            Expect(err).To(BeNil())
+        })
+
+        Specify("proper action for user management 2: zero-length password", func() {
+            _, err = client.InitUser("alice", "")
+            Expect(err).To(BeNil())
+        })
+
+        Specify("proper action for client API: StoreFile 1.", func() {
+            userlib.DebugMsg("Initializing user.")
             alice, err = client.InitUser("alice", defaultPassword)
             Expect(err).To(BeNil())
-            bob, err = client.InitUser("bob", defaultPassword)
+
+            userlib.DebugMsg("try to store empty filename.")
+            err = alice.StoreFile("", []byte(contentOne))
+            Expect(err).To(BeNil())
+            data, err := alice.LoadFile("")
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte(contentOne)))
+        })
+
+        Specify("proper action for client API: StoreFile 2.", func() {
+            userlib.DebugMsg("Initializing user.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("try to store empty sequence.")
+            err = alice.StoreFile(aliceFile, []byte(""))
+            Expect(err).To(BeNil())
+            data, err := alice.LoadFile(aliceFile)
+            Expect(err).To(BeNil())
+            Expect(data).To(Equal([]byte("")))
+        })
+
+        Specify("proper action for client API: StoreFile 3.", func() {
+            userlib.DebugMsg("Initializing user.")
+            alice, err = client.InitUser("alice", defaultPassword)
             Expect(err).To(BeNil())
             err = alice.StoreFile(aliceFile, []byte(contentOne))
             Expect(err).To(BeNil())
@@ -668,16 +705,15 @@ var _ = Describe("Client Tests", func() {
             data, err := alice.LoadFile(aliceFile)
             Expect(err).To(BeNil())
             Expect(data).To(Equal([]byte(contentTwo)))
+        })
 
-            userlib.DebugMsg("try to store empty sequence.")
-            err = alice.StoreFile(aliceFile, []byte(""))
+        Specify("proper action for client API: StoreFile 4.", func() {
+            userlib.DebugMsg("Initializing user and file.")
+            alice, err = client.InitUser("alice", defaultPassword)
             Expect(err).To(BeNil())
-            data, err = alice.LoadFile(aliceFile)
+            bob, err = client.InitUser("bob", defaultPassword)
             Expect(err).To(BeNil())
-            Expect(data).To(Equal([]byte("")))
-
-            userlib.DebugMsg("restore for next test.")
-            err = alice.StoreFile(aliceFile, []byte(contentThree))
+            err = alice.StoreFile(aliceFile, []byte(contentOne))
             Expect(err).To(BeNil())
 
             userlib.DebugMsg("create share link to bob")
@@ -687,9 +723,9 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
 
             userlib.DebugMsg("bob could properly read")
-            data, err = bob.LoadFile(aliceFile)
+            data, err := bob.LoadFile(aliceFile)
             Expect(err).To(BeNil())
-            Expect(data).To(Equal([]byte(contentThree)))
+            Expect(data).To(Equal([]byte(contentOne)))
 
             userlib.DebugMsg("alice overwrite the file")
             err = alice.StoreFile(aliceFile, []byte(contentFour))
