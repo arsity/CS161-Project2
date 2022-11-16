@@ -7,6 +7,7 @@ import (
     // Some imports use an underscore to prevent the compiler from complaining
     // about unused imports.
     _ "encoding/hex"
+    "errors"
     _ "errors"
     _ "strconv"
     _ "strings"
@@ -22,6 +23,14 @@ import (
 
     "github.com/cs161-staff/project2-starter-code/client"
 )
+
+// Helper function to measure bandwidth of a particular operation
+measureBandwidth := func (probe func())(bandwidth int) {
+    before := userlib.DatastoreGetBandwidth()
+    probe()
+    after := userlib.DatastoreGetBandwidth()
+    return after - before
+}
 
 func TestSetupAndExecution(t *testing.T) {
     RegisterFailHandler(Fail)
@@ -39,6 +48,9 @@ const contentTwo = "digital "
 const contentThree = "cryptocurrency!"
 const contentFour = "I love CS 161!"
 const contentFive = "Peyrin is a nice guy."
+
+const content100 = string('a' * 100)
+const content10000000 = string('a' * 10000000)
 
 // ================================================
 // Describe(...) blocks help you organize your tests
@@ -578,7 +590,7 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
             Expect(readContent).To(Equal(expectedContent))
         })
-        Specify("Isolation of access management across different file.", func() {
+        Specify("Isolation of access management across different file", func() {
             userlib.DebugMsg("Initialzing users.")
             alice, err = client.InitUser("alice", defaultPassword)
             Expect(err).To(BeNil())
@@ -607,6 +619,44 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
             Expect(data).To(Equal([]byte(contentOne + contentTwo)))
 
+        })
+    })
+
+    Describe("Advanced Tests, bandwidth", func() {
+        Specify("Bandwidth tests for client API: AppendToFile", func() {
+            userlib.DebugMsg("Initializing user.")
+            alice, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Initializing files.")
+            err = alice.StoreFile(aliceFile, []byte(""))
+            Expect(err).To(BeNil())
+
+            // Helper function to measure bandwidth of a particular operation
+            measureBandwidth := func(probe func()) (bandwidth int) {
+                before := userlib.DatastoreGetBandwidth()
+                probe()
+                after := userlib.DatastoreGetBandwidth()
+                return after - before
+            }
+
+            bw1 := measureBandwidth(func() {
+                alice.AppendToFile(aliceFile, []byte(content100))
+            })
+
+            err = alice.AppendToFile(aliceFile, []byte(content10000000))
+            Expect(err).To(BeNil())
+
+            bw2 := measureBandwidth(func() {
+                alice.AppendToFile(aliceFile, []byte(content100))
+            })
+
+            if bw2-bw1 < 100 {
+                err = nil
+            } else {
+                err = errors.New("bandwidth test failed")
+            }
+            Expect(err).To(BeNil())
         })
     })
 })
