@@ -284,23 +284,23 @@ var _ = Describe("Client Tests", func() {
 
             userlib.DebugMsg("Modify user profile of Alice, error expected.")
             datastore := userlib.DatastoreGetMap()
-            for _, val := range datastore {
+            for id, val := range datastore {
                 ori := val
-                val[0] ^= 0xff
+                datastore[id][0] ^= 0xff
                 _, err = client.GetUser("alice", defaultPassword)
                 Expect(err).NotTo(BeNil())
-                val[0] ^= 0xff                                    // revoke changes
+                datastore[id][0] ^= 0xff                          // revoke changes
                 _, err = client.GetUser("alice", defaultPassword) // should succeed
                 Expect(err).To(BeNil())
 
-                val = append(val, 0x9)
+                datastore[id] = append(datastore[id], 0x9)
                 _, err = client.GetUser("alice", defaultPassword)
                 Expect(err).NotTo(BeNil())
-                val = ori                                         // revoke changes
+                datastore[id] = ori                               // revoke changes
                 _, err = client.GetUser("alice", defaultPassword) // should succeed
                 Expect(err).To(BeNil())
 
-                val = val[0 : len(val)-1]
+                datastore[id] = datastore[id][0 : len(datastore[id])-1]
                 _, err = client.GetUser("alice", defaultPassword)
                 Expect(err).NotTo(BeNil())
                 val = ori                                         // revoke changes
@@ -374,7 +374,8 @@ var _ = Describe("Client Tests", func() {
                 _, err := alice.LoadFile(aliceFile)
                 Expect(err).NotTo(BeNil())
                 datastore[id][0] ^= 0xff // revoke changes
-                Expect(err).To(BeNil())  // should succeed
+                _, err = alice.LoadFile(aliceFile)
+                Expect(err).To(BeNil()) // should succeed
 
                 datastore[id] = append(datastore[id], 0x8)
                 _, err = alice.LoadFile(aliceFile)
