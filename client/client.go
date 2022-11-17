@@ -148,8 +148,11 @@ type FileSpace struct {
 	GivenSharedLinkKey  map[string][]byte
 
 	// maping username to a sharelink UUID created by the user
-	OwnedShareLinkUUID map[string]uuid.UUID
-	OwnedShareLinkKey  map[string][]byte
+	OwnedFileInvitor      map[string][]string
+	OwnedShareLinkUUID    map[string]uuid.UUID
+	OwnedShareLinkKey     map[string][]byte
+	OwnedShareLinkMacUUID map[string]uuid.UUID
+	OwnedShareLinkMacKey  map[string][]byte
 }
 
 type File struct {
@@ -255,7 +258,10 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	filespace.OwnedShareLinkUUID = make(map[string]uuid.UUID, 10)
 	filespace.GivenSharedLinkUUID = make(map[string]uuid.UUID, 10)
 	filespace.GivenSharedLinkKey = make(map[string][]byte, 10)
-	filespace.OwnedFilesKeys = make(map[string][]byte, 10)
+	filespace.OwnedShareLinkKey = make(map[string][]byte, 10)
+	filespace.OwnedFileInvitor = make(map[string][]string, 10)
+	filespace.OwnedShareLinkMacUUID = make(map[string]uuid.UUID, 10)
+	filespace.OwnedShareLinkMacKey = make(map[string][]byte, 10)
 
 	// store the file space
 	UUID_filespace := uuid.New()
@@ -495,20 +501,20 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 		(filespace.GivenSharedLinkUUID[filename_hash_string] == uuid.Nil) {
 
 		// generate keys
-		file_key, err := userlib.HashKDF(userdata.FileRootKey, filename_hash[:])
+		// file_key, err := userlib.HashKDF(userdata.FileRootKey, filename_hash[:])
 
-		if err != nil {
-			return err
-		}
+		// if err != nil {
+		// 	return err
+		// }
 
-		mac_key, err := userlib.HashKDF(userdata.FileRootKey, userlib.Hash([]byte(filename+"mac")))
+		// mac_key, err := userlib.HashKDF(userdata.FileRootKey, userlib.Hash([]byte(filename+"mac")))
 
-		if err != nil {
-			return err
-		}
+		// if err != nil {
+		// 	return err
+		// }
 
-		file_key = file_key[:16]
-		mac_key = mac_key[:16]
+		file_key := userlib.RandomBytes(16)
+		mac_key := userlib.RandomBytes(16)
 
 		UUID_file := uuid.New()
 
@@ -1083,8 +1089,17 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 		userlib.DatastoreSet(invitationPtr, sharelink_head_ciper)
 
 		// update the filespace
+		invitors := filespace.OwnedFileInvitor[filename_hash_string]
+		invitors = append(invitors, recipientUsername_hash_string)
+		filespace.OwnedFileInvitor[filename_hash_string] = invitors
+
 		filespace.OwnedShareLinkUUID[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkContentUUID
-		filespace.OwnedFilesKeys[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkContentKey
+		filespace.OwnedShareLinkKey[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkContentKey
+
+		filespace.OwnedShareLinkMacUUID[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkMacUUID
+
+		filespace.OwnedShareLinkMacKey[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkContentMackey
+
 		userdata.UpdateFileSpace(filespace)
 	} else if filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil {
 		// if the user is shared with the file
@@ -1262,11 +1277,75 @@ func (userdata *User) RevokeAccess(filename string, recipientUsername string) er
 
 	recipientUsername_hash_string := hex.EncodeToString(userlib.Hash([]byte(recipientUsername)))
 
-	if filespace.OwnedShareLinkUUID[recipientUsername_hash_string] == uuid.Nil {
+	if filespace.OwnedShareLinkUUID[recipientUsername_hash_string+filename_hash_string] == uuid.Nil {
 		return errors.New("the given filename is not currently shared with recipientUsername")
 	}
 
 	userlib.DatastoreDelete(filespace.OwnedShareLinkUUID[recipientUsername_hash_string+filename_hash_string])
+
+	// delete(filespace.OwnedFileInvitor, recipientUsername_hash_string)
+
+	vistors := filespace.OwnedFileInvitor[filename_hash_string]
+
+	new_vistors := []string{}
+
+	for _, vistor := range vistors {
+		if vistor != recipientUsername_hash_string {
+			new_vistors = append(new_vistors, vistor)
+		}
+	}
+	filespace.OwnedFileInvitor[filename_hash_string] = new_vistors
+
+	delete(filespace.OwnedShareLinkUUID, recipientUsername_hash_string+filename_hash_string)
+	delete(filespace.OwnedShareLinkKey, recipientUsername_hash_string+filename_hash_string)
+	delete(filespace.OwnedShareLinkMacUUID, recipientUsername_hash_string+filename_hash_string)
+	delete(filespace.OwnedShareLinkMacKey, recipientUsername_hash_string+filename_hash_string)
+
+	// refresh every other invitation
+
+	userdata.UpdateFileSpace(filespace)
+
+	if err != nil {
+		return err
+	}
+
+	content, err := userdata.LoadFile(filename)
+
+	if err != nil {
+		return err
+	}
+
+	err = userdata.StoreFile(filename, content)
+
+	if err != nil {
+		return err
+	}
+	filespace, err = userdata.GetFileSpace()
+
+	if err != nil {
+		return err
+	}
+	var share_link_content ShareLinkContent
+
+	share_link_content.FileUUID = filespace.OwnedFilesUUIDs[filename_hash_string]
+	share_link_content.FileMacUUID = filespace.OwnedFilesMacUUIDs[filename_hash_string]
+	share_link_content.FileKey = filespace.OwnedFilesKeys[filename_hash_string]
+	share_link_content.FileMacKey = filespace.OwnedFilesMacKeys[filename_hash_string]
+
+	share_link_content_bytes, _ := json.Marshal(share_link_content)
+
+	for _, invitor := range filespace.OwnedFileInvitor[filename_hash_string] {
+		key := invitor + filename_hash_string
+		// update the share content
+		share_link_content_ciper := userlib.SymEnc(filespace.OwnedShareLinkKey[invitor+filename_hash_string], userlib.RandomBytes(16), share_link_content_bytes)
+
+		userlib.DatastoreSet(filespace.OwnedShareLinkUUID[invitor+filename_hash_string], share_link_content_ciper)
+
+		new_mac, _ := userlib.HMACEval(filespace.OwnedShareLinkMacKey[key], share_link_content_ciper)
+
+		userlib.DatastoreSet(filespace.OwnedShareLinkMacUUID[key], new_mac)
+
+	}
 
 	return nil
 }
