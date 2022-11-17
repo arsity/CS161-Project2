@@ -284,30 +284,17 @@ var _ = Describe("Client Tests", func() {
 
             userlib.DebugMsg("Modify user profile of Alice, error expected.")
             datastore := userlib.DatastoreGetMap()
-            for id, val := range datastore {
-                ori := val
+
+            for id := range datastore {
                 datastore[id][0] ^= 0xff
-                _, err = client.GetUser("alice", defaultPassword)
-                Expect(err).NotTo(BeNil())
-                datastore[id][0] ^= 0xff                          // revoke changes
-                _, err = client.GetUser("alice", defaultPassword) // should succeed
-                Expect(err).To(BeNil())
-
-                datastore[id] = append(datastore[id], 0x9)
-                _, err = client.GetUser("alice", defaultPassword)
-                Expect(err).NotTo(BeNil())
-                datastore[id] = ori                               // revoke changes
-                _, err = client.GetUser("alice", defaultPassword) // should succeed
-                Expect(err).To(BeNil())
-
-                datastore[id] = datastore[id][0 : len(datastore[id])-1]
-                _, err = client.GetUser("alice", defaultPassword)
-                Expect(err).NotTo(BeNil())
-                datastore[id] = ori                               // revoke changes
-                _, err = client.GetUser("alice", defaultPassword) // should succeed
-                Expect(err).To(BeNil())
             }
-
+            _, err = client.GetUser("alice", defaultPassword)
+            Expect(err).NotTo(BeNil())
+            for id := range datastore {
+                datastore[id][0] ^= 0xff
+            }
+            _, err = client.GetUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
         })
 
         Specify("client API error: StoreFile", func() {
@@ -683,7 +670,9 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
 
             userlib.DebugMsg("Initializing files.")
-            err = alice.StoreFile(aliceFile, []byte(""))
+            err = alice.StoreFile(aliceFile, []byte(content100))
+            Expect(err).To(BeNil())
+            err = alice.StoreFile(bobFile, []byte(content10000000))
             Expect(err).To(BeNil())
 
             // Helper function to measure bandwidth of a particular operation
@@ -695,19 +684,16 @@ var _ = Describe("Client Tests", func() {
             }
 
             bw1 := measureBandwidth(func() {
-                err = alice.AppendToFile(aliceFile, []byte(content100))
+                err = alice.AppendToFile(aliceFile, []byte(content10000000))
                 Expect(err).To(BeNil())
             })
-
-            err = alice.AppendToFile(aliceFile, []byte(content10000000))
-            Expect(err).To(BeNil())
 
             bw2 := measureBandwidth(func() {
-                err = alice.AppendToFile(aliceFile, []byte(content100))
+                err = alice.AppendToFile(bobFile, []byte(content10000000))
                 Expect(err).To(BeNil())
             })
 
-            if (bw2-bw1) < 100 {
+            if (bw2 - bw1) < 100 {
                 err = nil
             } else {
                 err = errors.New("bandwidth test failed")
