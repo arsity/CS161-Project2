@@ -232,10 +232,19 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userdata.FileRootKey = userlib.Argon2Key([]byte(username+"File"+password), userlib.RandomBytes(64), 16)
 
 	// generate some keys
-	filespace_mac_key, _ := userlib.HashKDF(userdata.FileRootKey, []byte("mac"))
+	filespace_mac_key, err := userlib.HashKDF(userdata.FileRootKey, []byte("mac"))
+
+	if err != nil {
+		return userdataptr, err
+	}
+
 	filespace_mac_key = filespace_mac_key[:16]
 
-	filespace_encrpt_key, _ := userlib.HashKDF(userdata.FileRootKey, []byte("encription"))
+	filespace_encrpt_key, err := userlib.HashKDF(userdata.FileRootKey, []byte("encription"))
+	if err != nil {
+		return userdataptr, err
+	}
+
 	filespace_encrpt_key = filespace_encrpt_key[:16]
 
 	var filespace FileSpace
@@ -485,8 +494,17 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 		(filespace.GivenSharedLinkUUID[filename_hash_string] == uuid.Nil) {
 
 		// generate keys
-		file_key, _ := userlib.HashKDF(userdata.FileRootKey, filename_hash[:])
-		mac_key, _ := userlib.HashKDF(userdata.FileRootKey, userlib.Hash([]byte(filename+"mac")))
+		file_key, err := userlib.HashKDF(userdata.FileRootKey, filename_hash[:])
+
+		if err != nil {
+			return err
+		}
+
+		mac_key, err := userlib.HashKDF(userdata.FileRootKey, userlib.Hash([]byte(filename+"mac")))
+
+		if err != nil {
+			return err
+		}
 
 		file_key = file_key[:16]
 		mac_key = mac_key[:16]
@@ -878,7 +896,10 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 	file.Contents = append(file.Contents, UUID_content)
 	file.Macs = append(file.Macs, UUID_mac)
 
-	file_bytes, _ := json.Marshal(file)
+	file_bytes, err := json.Marshal(file)
+	if err != nil {
+		return err
+	}
 
 	file_ciper := userlib.SymEnc(FileKey, userlib.RandomBytes(16), file_bytes)
 
@@ -1208,9 +1229,9 @@ func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid
 
 	// check if the invitation still valid
 
-	_,ok = userlib.DatastoreGet(sharelink.ShareLinkContentUUID)
+	_, ok = userlib.DatastoreGet(sharelink.ShareLinkContentUUID)
 
-	if !ok{
+	if !ok {
 		return errors.New("the invitation has been revoked")
 	}
 
