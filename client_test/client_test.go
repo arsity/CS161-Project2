@@ -284,30 +284,17 @@ var _ = Describe("Client Tests", func() {
 
             userlib.DebugMsg("Modify user profile of Alice, error expected.")
             datastore := userlib.DatastoreGetMap()
-            for id, val := range datastore {
-                ori := val
+
+            for id := range datastore {
                 datastore[id][0] ^= 0xff
-                _, err = client.GetUser("alice", defaultPassword)
-                Expect(err).NotTo(BeNil())
-                datastore[id][0] ^= 0xff                          // revoke changes
-                _, err = client.GetUser("alice", defaultPassword) // should succeed
-                Expect(err).To(BeNil())
-
-                datastore[id] = append(datastore[id], 0x9)
-                _, err = client.GetUser("alice", defaultPassword)
-                Expect(err).NotTo(BeNil())
-                datastore[id] = ori                               // revoke changes
-                _, err = client.GetUser("alice", defaultPassword) // should succeed
-                Expect(err).To(BeNil())
-
-                datastore[id] = datastore[id][0 : len(datastore[id])-1]
-                _, err = client.GetUser("alice", defaultPassword)
-                Expect(err).NotTo(BeNil())
-                datastore[id] = ori                               // revoke changes
-                _, err = client.GetUser("alice", defaultPassword) // should succeed
-                Expect(err).To(BeNil())
             }
-
+            _, err = client.GetUser("alice", defaultPassword)
+            Expect(err).NotTo(BeNil())
+            for id := range datastore {
+                datastore[id][0] ^= 0xff
+            }
+            _, err = client.GetUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
         })
 
         Specify("client API error: StoreFile", func() {
@@ -706,7 +693,7 @@ var _ = Describe("Client Tests", func() {
                 Expect(err).To(BeNil())
             })
 
-            if (bw2-bw1) < 100 {
+            if (bw2 - bw1) < 100 {
                 err = nil
             } else {
                 err = errors.New("bandwidth test failed")
