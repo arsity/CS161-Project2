@@ -387,7 +387,8 @@ var _ = Describe("Client Tests", func() {
                 datastore[id] = datastore[id][0 : len(datastore[id])-1]
                 _, err = alice.LoadFile(aliceFile)
                 Expect(err).NotTo(BeNil())
-                datastore[id] = ori     // revoke changes
+                datastore[id] = ori // revoke changes
+                _, err = alice.LoadFile(aliceFile)
                 Expect(err).To(BeNil()) // should succeed
             }
         })
