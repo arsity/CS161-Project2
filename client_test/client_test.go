@@ -683,7 +683,9 @@ var _ = Describe("Client Tests", func() {
             Expect(err).To(BeNil())
 
             userlib.DebugMsg("Initializing files.")
-            err = alice.StoreFile(aliceFile, []byte(""))
+            err = alice.StoreFile(aliceFile, []byte(content100))
+            Expect(err).To(BeNil())
+            err = alice.StoreFile(bobFile, []byte(content10000000))
             Expect(err).To(BeNil())
 
             // Helper function to measure bandwidth of a particular operation
@@ -695,15 +697,12 @@ var _ = Describe("Client Tests", func() {
             }
 
             bw1 := measureBandwidth(func() {
-                err = alice.AppendToFile(aliceFile, []byte(content100))
+                err = alice.AppendToFile(aliceFile, []byte(content10000000))
                 Expect(err).To(BeNil())
             })
 
-            err = alice.AppendToFile(aliceFile, []byte(content10000000))
-            Expect(err).To(BeNil())
-
             bw2 := measureBandwidth(func() {
-                err = alice.AppendToFile(aliceFile, []byte(content100))
+                err = alice.AppendToFile(bobFile, []byte(content10000000))
                 Expect(err).To(BeNil())
             })
 
