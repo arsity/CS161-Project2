@@ -8,6 +8,7 @@ package client
 // may break the autograder!
 
 import (
+	"bytes"
 	"encoding/hex"
 	"encoding/json"
 
@@ -125,6 +126,7 @@ type User struct {
 }
 
 // the file space of a user
+// everything that will change during the process will  be stored here
 type FileSpace struct {
 
 	// the UUID of File struct
@@ -141,7 +143,13 @@ type FileSpace struct {
 
 	// the sharklinksthat has been accept
 	// the input is a hash of the file name and output is the UUID of its corresponding share link
-	SharedFiles map[string]uuid.UUID
+
+	GivenSharedLinkUUID map[string]uuid.UUID
+	GivenSharedLinkKey  map[string][]byte
+
+	// maping username to a sharelink UUID created by the user
+	OwnedShareLinkUUID map[string]uuid.UUID
+	OwnedShareLinkKey  map[string][]byte
 }
 
 type File struct {
@@ -154,13 +162,29 @@ type File struct {
 	Macs []uuid.UUID
 }
 
+type ShareLinkHead struct {
+	ShareLinkUUID uuid.UUID
+	ShareLinkKey  []byte
+}
+
 type ShareLink struct {
+	FromUserHashString     string
+	ToUserHashString       string
+	ShareLinkContentUUID   uuid.UUID
+	ShareLinkMacUUID       uuid.UUID
+	ShareLinkContentKey    []byte
+	ShareLinkContentMackey []byte
+	Sign                   []byte
+}
+
+// it is like a small file space, provided everything needed for the file operation
+type ShareLinkContent struct {
 	// the struct of the share link
 
-	FromUserHash [64]byte
-	ToUserHash   [64]byte
-	FileUUID     uuid.UUID
-	FileKey      []byte
+	FileUUID    uuid.UUID
+	FileMacUUID uuid.UUID
+	FileKey     []byte
+	FileMacKey  []byte
 }
 
 // NOTE: The following methods have toy (insecure!) implementations.
@@ -174,33 +198,34 @@ func getUUIDbytes(str string) (result []byte) {
 func InitUser(username string, password string) (userdataptr *User, err error) {
 	// check if the username is empty
 	if username == "" {
-		return userdataptr, errors.New("The given username is empty!")
+		return userdataptr, errors.New("the given username is empty")
 	}
 
 	var userdata User
 	//store the name hash
 	UsernameHash := userlib.Hash([]byte(username))
 	userdata.UsernameHash = UsernameHash
+	UsernameHashString := hex.EncodeToString(UsernameHash)
 
 	//get the keys for public key enription
 	userdata.EncryptionPublicKey, userdata.EncryptionPrivateKey, _ = userlib.PKEKeyGen()
 
 	//store the public key in key store
-	store_error := userlib.KeystoreSet(username+"Encription", userdata.EncryptionPublicKey)
+	store_error := userlib.KeystoreSet(UsernameHashString+"Encription", userdata.EncryptionPublicKey)
 
 	// if the username already exists
 	if store_error != nil {
-		return userdataptr, errors.New("The given username already exists!")
+		return userdataptr, errors.New("the given username already exists")
 	}
 
 	// get the keys for the digital signature
 	userdata.DSSignKey, userdata.DSVerifykey, _ = userlib.DSKeyGen()
 
-	store_error = userlib.KeystoreSet(username+"Signature", userdata.DSVerifykey)
+	store_error = userlib.KeystoreSet(UsernameHashString+"Signature", userdata.DSVerifykey)
 
 	// if the username already exists
 	if store_error != nil {
-		return userdataptr, errors.New("The given username already exists!")
+		return userdataptr, errors.New("the given username already exists")
 	}
 
 	// initialize the file space
@@ -214,9 +239,14 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	filespace_encrpt_key = filespace_encrpt_key[:16]
 
 	var filespace FileSpace
-	// filespace.OwnedFilesUUIDs = make(map[string]uuid.UUID)
-	// filespace.OwnedFilesKeys = make(map[string][]byte)
-	// filespace.SharedFiles = make(map[string]uuid.UUID)
+	filespace.OwnedFilesUUIDs = make(map[string]uuid.UUID, 10)
+	filespace.OwnedFilesKeys = make(map[string][]byte, 10)
+	filespace.OwnedFilesMacUUIDs = make(map[string]uuid.UUID, 10)
+	filespace.OwnedFilesMacKeys = make(map[string][]byte, 10)
+	filespace.OwnedShareLinkUUID = make(map[string]uuid.UUID, 10)
+	filespace.GivenSharedLinkUUID = make(map[string]uuid.UUID, 10)
+	filespace.GivenSharedLinkKey = make(map[string][]byte, 10)
+	filespace.OwnedFilesKeys = make(map[string][]byte, 10)
 
 	// store the file space
 	UUID_filespace := uuid.New()
@@ -259,7 +289,6 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	// generate the mac for the user struct to provide integrity
 	UUID_mac, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For Mac"))
 
-
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
 
 	mac, _ := userlib.HMACEval(mac_key, user_struct_ciper)
@@ -299,15 +328,13 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 
 	UUID_data, _ := uuid.FromBytes(getUUIDbytes(username + "|" + password + "For User Struct"))
 
-
-
 	mac, ok := userlib.DatastoreGet(UUID_mac)
-	if ok == false {
-		return userdataptr, errors.New("The mac of User struct doesn't exist")
+	if !ok {
+		return userdataptr, errors.New("the mac of User struct doesn't exist")
 	}
 	data, ok := userlib.DatastoreGet(UUID_data)
-	if ok == false {
-		return userdataptr, errors.New("The data of User struct doesn't exist")
+	if !ok {
+		return userdataptr, errors.New("the data of User struct doesn't exist")
 	}
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
@@ -316,8 +343,8 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 
 	integrity_flag := userlib.HMACEqual(mac, new_mac)
 
-	if integrity_flag == false {
-		return userdataptr, errors.New("Warning! The User struct has been tampered!")
+	if !integrity_flag {
+		return userdataptr, errors.New("the User struct has been tampered")
 	}
 
 	// everything is checked, get the user struct
@@ -362,7 +389,6 @@ func (userdata *User) CheckFileSpace() (err error) {
 		return errors.New("the filespace has been tampered")
 	}
 
-
 	return nil
 }
 
@@ -379,16 +405,15 @@ func (userdata *User) GetFileSpace() (filespace FileSpace, err error) {
 
 	filespace_ciper, ok := userlib.DatastoreGet(userdata.FileSpaceUUID)
 
-	if ok == false {
+	if !ok {
 		return filespace, errors.New("the given filespace doesn't exist")
 	}
 
 	// decript the filespace
-	filespace_bytes := userlib.SymDec(filespace_encrpt_key,filespace_ciper)
+	filespace_bytes := userlib.SymDec(filespace_encrpt_key, filespace_ciper)
 
 	json.Unmarshal(filespace_bytes, &filespace)
 
-	fmt.Print(filespace.OwnedFilesMacUUIDs,"\n")
 	return filespace, nil
 
 }
@@ -414,7 +439,6 @@ func (userdata *User) UpdateFileSpace(filespace FileSpace) {
 
 	userlib.DatastoreSet(userdata.FileSpaceMacUUID, filespace_mac)
 
-
 	// some testing code
 	// var new FileSpace
 	// data,_ := userlib.DatastoreGet(userdata.FileSpaceUUID)
@@ -428,39 +452,102 @@ func (userdata *User) UpdateFileSpace(filespace FileSpace) {
 // store a new file
 func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	filespace, err := userdata.GetFileSpace()
-	filespace.OwnedFilesUUIDs = make(map[string]uuid.UUID)
-	filespace.OwnedFilesMacUUIDs = make(map[string]uuid.UUID)
-	filespace.OwnedFilesKeys = make(map[string][]byte)
-	filespace.OwnedFilesMacKeys = make(map[string][]byte)
+	// bug place
 
 	if err != nil {
 		return err
 	}
+
+	// check whether the file already exist
 
 	var filename_hash [64]byte
 	copy(filename_hash[:], userlib.Hash([]byte(filename)))
 
 	filename_hash_string := hex.EncodeToString(filename_hash[:])
 
-	// generate keys
-	file_key, _ := userlib.HashKDF(userdata.FileRootKey, filename_hash[:])
-	mac_key, _ := userlib.HashKDF(userdata.FileRootKey, userlib.Hash([]byte(filename+"mac")))
+	// if this is totally a new file
+	if (filespace.OwnedFilesUUIDs[filename_hash_string] == uuid.Nil) &&
+		(filespace.GivenSharedLinkUUID[filename_hash_string] == uuid.Nil) {
 
-	file_key = file_key[:16]
-	mac_key = mac_key[:16]
+		// generate keys
+		file_key, _ := userlib.HashKDF(userdata.FileRootKey, filename_hash[:])
+		mac_key, _ := userlib.HashKDF(userdata.FileRootKey, userlib.Hash([]byte(filename+"mac")))
 
-	UUID_file := uuid.New()
+		file_key = file_key[:16]
+		mac_key = mac_key[:16]
 
+		UUID_file := uuid.New()
 
-	filespace.OwnedFilesKeys[filename_hash_string] = file_key
-	filespace.OwnedFilesUUIDs[filename_hash_string] = UUID_file
-	filespace.OwnedFilesMacKeys[filename_hash_string] = mac_key
+		filespace.OwnedFilesKeys[filename_hash_string] = file_key
+		filespace.OwnedFilesUUIDs[filename_hash_string] = UUID_file
+		filespace.OwnedFilesMacKeys[filename_hash_string] = mac_key
+
+		var newFile File
+
+		// encrpt the file content, store the content
+		content_ciper := userlib.SymEnc(file_key, userlib.RandomBytes(16), content)
+
+		UUID_file_content := uuid.New()
+		newFile.Contents = append(newFile.Contents, UUID_file_content)
+		userlib.DatastoreSet(UUID_file_content, content_ciper)
+
+		// store the mac
+		file_mac, _ := userlib.HMACEval(mac_key, content_ciper)
+		UUID_file_mac := uuid.New()
+		newFile.Macs = append(newFile.Macs, UUID_file_mac)
+		userlib.DatastoreSet(UUID_file_mac, file_mac)
+
+		// store the file structure
+
+		newFile_bytes, _ := json.Marshal(newFile)
+
+		// store the file struct itself
+		newFile_ciper := userlib.SymEnc(file_key, userlib.RandomBytes(16), newFile_bytes)
+		userlib.DatastoreSet(UUID_file, newFile_ciper)
+
+		// store the mac of the file struct
+		newFile_mac, _ := userlib.HMACEval(mac_key, newFile_ciper)
+
+		UUID_file_strct_mac := uuid.New()
+		userlib.DatastoreSet(UUID_file_strct_mac, newFile_mac)
+
+		filespace.OwnedFilesMacUUIDs[filename_hash_string] = UUID_file_strct_mac
+
+		userdata.UpdateFileSpace(filespace)
+		return nil
+	}
+
+	// if want to overide a existing file
+
+	// get everthing needed
+	var UUID_file uuid.UUID
+	var UUID_file_struct_mac uuid.UUID
+	var file_key []byte
+	var mac_key []byte
+
+	// if the user is the owner of the file
+	if filespace.OwnedFilesUUIDs[filename_hash_string] != uuid.Nil {
+		UUID_file = filespace.OwnedFilesUUIDs[filename_hash_string]
+		UUID_file_struct_mac = filespace.OwnedFilesMacUUIDs[filename_hash_string]
+		file_key = filespace.OwnedFilesKeys[filename_hash_string]
+		mac_key = filespace.OwnedFilesMacKeys[filename_hash_string]
+
+	} else if filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil {
+		// if the user is shared with the file
+		share_link_content, err := filespace.GetShareLinkContent(filename, userdata.EncryptionPrivateKey)
+		if err != nil {
+			return err
+		}
+		UUID_file = share_link_content.FileUUID
+		UUID_file_struct_mac = share_link_content.FileMacUUID
+		file_key = share_link_content.FileKey
+		mac_key = share_link_content.FileMacKey
+	}
 
 	var newFile File
 
 	// encrpt the file content, store the content
 	content_ciper := userlib.SymEnc(file_key, userlib.RandomBytes(16), content)
-
 	UUID_file_content := uuid.New()
 	newFile.Contents = append(newFile.Contents, UUID_file_content)
 	userlib.DatastoreSet(UUID_file_content, content_ciper)
@@ -482,19 +569,89 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	// store the mac of the file struct
 	newFile_mac, _ := userlib.HMACEval(mac_key, newFile_ciper)
 
-	UUID_file_strct_mac := uuid.New()
-	userlib.DatastoreSet(UUID_file_strct_mac, newFile_mac)
-
-	filespace.OwnedFilesMacUUIDs[filename_hash_string] = UUID_file_strct_mac
-
-	userdata.UpdateFileSpace(filespace)
-
-
-
-
-
+	userlib.DatastoreSet(UUID_file_struct_mac, newFile_mac)
 
 	return nil
+
+}
+
+// get the sharelink_content with checking
+func (filespace FileSpace) GetShareLinkContent(filename string, PrivateKey userlib.PKEDecKey) (share_link_content ShareLinkContent, err error) {
+	filename_hash_string := hex.EncodeToString(userlib.Hash([]byte(filename)))
+
+	sharelink_ciper, ok := userlib.DatastoreGet(filespace.GivenSharedLinkUUID[filename_hash_string])
+
+	if !ok {
+		return share_link_content, errors.New("the sharelink does not exist")
+	}
+
+	sharelink_bytes := userlib.SymDec(filespace.GivenSharedLinkKey[filename_hash_string], sharelink_ciper)
+
+	var sharelink ShareLink
+	err = json.Unmarshal(sharelink_bytes, &sharelink)
+	if err != nil {
+		return share_link_content, err
+	}
+
+	// check the sharelink
+	senderPublicSignKey, ok := userlib.KeystoreGet(sharelink.FromUserHashString + "Signature")
+
+	if !ok {
+		return share_link_content, errors.New("cannot get sender's public sign key")
+	}
+
+	// verify the sign
+	SignContent := bytes.Join([][]byte{
+		[]byte(sharelink.FromUserHashString),
+		[]byte(sharelink.ToUserHashString),
+		sharelink.ShareLinkContentUUID[:],
+		sharelink.ShareLinkMacUUID[:],
+		sharelink.ShareLinkContentKey,
+		sharelink.ShareLinkContentMackey}, []byte(","))
+
+	err = userlib.DSVerify(senderPublicSignKey, SignContent, sharelink.Sign)
+	if err != nil {
+		return share_link_content, errors.New("digital sign verification fails")
+	}
+	// everything about the sharelink is checked
+
+
+
+	share_link_content_ciper, ok := userlib.DatastoreGet(sharelink.ShareLinkContentUUID)
+
+
+
+	if !ok {
+		return share_link_content, errors.New("the share link content does not exist in the Datastore")
+	}
+
+	share_link_content_mac, ok := userlib.DatastoreGet(sharelink.ShareLinkMacUUID)
+
+	if !ok {
+		return share_link_content, errors.New("the share link content Mac does not exist in the Datastore")
+	}
+
+	new_mac, err := userlib.HMACEval(sharelink.ShareLinkContentMackey, share_link_content_ciper)
+
+	if err != nil {
+		return share_link_content, err
+	}
+
+	integrity_flag := userlib.HMACEqual(share_link_content_mac, new_mac)
+
+	if !integrity_flag {
+		return share_link_content, errors.New("the sharelink content has been tampered")
+	}
+
+	share_link_content_bytes := userlib.SymDec(sharelink.ShareLinkContentKey, share_link_content_ciper)
+
+	err = json.Unmarshal(share_link_content_bytes, &share_link_content)
+
+	if err != nil {
+		return share_link_content, err
+	}
+
+	return share_link_content, err
 
 }
 
@@ -509,6 +666,10 @@ func (filespace FileSpace) GetFileStruct(filename string) (file File, err error)
 	FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash_string]
 	FileKey := filespace.OwnedFilesKeys[filename_hash_string]
 	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash_string]
+
+	if FileUUID == uuid.Nil {
+		return file, errors.New("the given file doesn't exist in this filespace")
+	}
 
 	// first, check if the File struct's integrity
 
@@ -530,13 +691,60 @@ func (filespace FileSpace) GetFileStruct(filename string) (file File, err error)
 	file_struct_integrity := userlib.HMACEqual(file_mac, new_file_mac)
 	// fmt.Print(new_file_mac,"\n")
 
-	if ! file_struct_integrity  {
+	if !file_struct_integrity {
 		return file, errors.New("the File struct has been tampered")
 	}
 
 	// decript the file struct
 	bytes_file_struct := userlib.SymDec(FileKey, ciper_file)
-	json.Unmarshal(bytes_file_struct, &file)
+	err = json.Unmarshal(bytes_file_struct, &file)
+
+	if err != nil {
+		return file, err
+	}
+
+	return file, nil
+}
+
+func (share_link_content ShareLinkContent) GetFileStruct() (file File, err error) {
+
+	FileUUID := share_link_content.FileUUID
+	FileMacUUID := share_link_content.FileMacUUID
+	FileKey := share_link_content.FileKey
+	FileMacKey := share_link_content.FileMacKey
+
+	// first, check if the File struct's integrity
+
+	ciper_file, ok := userlib.DatastoreGet(FileUUID)
+	if !ok {
+		return file, errors.New("the File struct doesn't exist")
+	}
+
+	file_mac, ok := userlib.DatastoreGet(FileMacUUID)
+
+	if !ok {
+		return file, errors.New("the File struct Mac doesn't exist")
+	}
+
+	new_file_mac, err := userlib.HMACEval(FileMacKey, ciper_file)
+
+	if err != nil {
+		return file, err
+	}
+
+	file_struct_integrity := userlib.HMACEqual(file_mac, new_file_mac)
+
+	if !file_struct_integrity {
+		return file, errors.New("the File struct has been tampered")
+	}
+
+	// decript the file struct
+	bytes_file_struct := userlib.SymDec(FileKey, ciper_file)
+	err = json.Unmarshal(bytes_file_struct, &file)
+
+	if err != nil {
+		return file, err
+	}
 
 	return file, nil
 }
@@ -578,22 +786,48 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 
 	filename_hash_string := hex.EncodeToString(filename_hash[:])
 
-	FileUUID := filespace.OwnedFilesUUIDs[filename_hash_string]
-	FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash_string]
-	FileKey := filespace.OwnedFilesKeys[filename_hash_string]
-	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash_string]
+	// get everthing needed
+	var file File
+	var FileUUID uuid.UUID
+	var FileMacUUID uuid.UUID
+	var FileKey []byte
+	var FileMacKey []byte
 
-	if err != nil {
-		return err
+	// if the user is the owner of the file
+	if filespace.OwnedFilesUUIDs[filename_hash_string] != uuid.Nil {
+		FileUUID = filespace.OwnedFilesUUIDs[filename_hash_string]
+		FileMacUUID = filespace.OwnedFilesMacUUIDs[filename_hash_string]
+		FileKey = filespace.OwnedFilesKeys[filename_hash_string]
+		FileMacKey = filespace.OwnedFilesMacKeys[filename_hash_string]
+
+		file, err = filespace.GetFileStruct(filename)
+
+		if err != nil {
+			return err
+		}
+
+	} else if filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil {
+		// if the user is shared with the file
+		share_link_content, err := filespace.GetShareLinkContent(filename, userdata.EncryptionPrivateKey)
+		if err != nil {
+			return err
+		}
+		FileUUID = share_link_content.FileUUID
+		FileMacUUID = share_link_content.FileMacUUID
+		FileKey = share_link_content.FileKey
+		FileMacKey = share_link_content.FileMacKey
+
+		file, err = share_link_content.GetFileStruct()
+
+		if err != nil {
+			return err
+		}
+
+	} else {
+		return errors.New("the given file does not exists")
 	}
 
 	// get the file header
-
-	file, err := filespace.GetFileStruct(filename)
-
-	if err != nil {
-		return err
-	}
 
 	// prepare the new content
 	ciper_content := userlib.SymEnc(FileKey, userlib.RandomBytes(16), content)
@@ -628,19 +862,43 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 	filename_hash_string := hex.EncodeToString(filename_hash[:])
 
 	filespace, err := userdata.GetFileSpace()
-	// FileUUID := filespace.OwnedFilesUUIDs[filename_hash]
-	// FileMacUUID := filespace.OwnedFilesMacUUIDs[filename_hash]
-	FileKey := filespace.OwnedFilesKeys[filename_hash_string]
-	FileMacKey := filespace.OwnedFilesMacKeys[filename_hash_string]
 
-	if err != nil {
-		return content, err
-	}
+	var file File
+	var FileKey []byte
+	var FileMacKey []byte
 
-	file, err := filespace.GetFileStruct(filename)
+	// the file is owned
+	if filespace.OwnedFilesUUIDs[filename_hash_string] != uuid.Nil {
+		FileKey = filespace.OwnedFilesKeys[filename_hash_string]
+		FileMacKey = filespace.OwnedFilesMacKeys[filename_hash_string]
 
-	if err != nil {
-		return content, err
+		if err != nil {
+			return content, err
+		}
+
+		file, err = filespace.GetFileStruct(filename)
+
+		if err != nil {
+			return content, err
+		}
+	} else if filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil {
+		share_link_content, err := filespace.GetShareLinkContent(filename, userdata.EncryptionPrivateKey)
+
+
+		if err != nil {
+			return content, err
+		}
+		file, err = share_link_content.GetFileStruct()
+
+		if err != nil {
+			return content, err
+		}
+
+		FileKey = share_link_content.FileKey
+		FileMacKey = share_link_content.FileMacKey
+
+	} else {
+		return content, errors.New("the file trying to load does not exist")
 	}
 
 	err = file.CheckFile(FileMacKey)
@@ -651,11 +909,11 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 
 	// everything is good now, decription and change file
 
-	result := []byte{}
+	var result []byte
 	for i := range file.Contents {
 		ciper_content, ok := userlib.DatastoreGet(file.Contents[i])
-		if ok == false {
-			return content, errors.New("Missing File Content")
+		if !ok {
+			return content, errors.New("missing file content")
 		}
 
 		result = userlib.SymDec(FileKey, ciper_content)
@@ -667,24 +925,289 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 	return content, nil
 }
 
-func (userdata *User) CreateInvitation(filename string, recipientUsername string) (
-	invitationPtr uuid.UUID, err error) {
-	return
+func (userdata *User) CreateInvitation(filename string, recipientUsername string) (invitationPtr uuid.UUID, err error) {
+	// check if the recipientUsername exists
+	recipientUsername_hash_string := hex.EncodeToString(userlib.Hash([]byte(recipientUsername)))
+
+	recipient_public_encryption_key, ok := userlib.KeystoreGet(recipientUsername_hash_string + "Encription")
+
+	if !ok {
+		return invitationPtr, errors.New("the given recipient doesn't exist")
+	}
+
+	// first, check if the invitor is the owner
+	filespace, err := userdata.GetFileSpace()
+	if err != nil {
+		return invitationPtr, err
+	}
+
+	filename_hash_string := hex.EncodeToString(userlib.Hash([]byte(filename)))
+
+	var sharelink_head ShareLinkHead
+
+	sharelink_head.ShareLinkUUID = uuid.New()
+	sharelink_head.ShareLinkKey = userlib.RandomBytes(16)
+
+	var sharelink ShareLink
+	sharelink.FromUserHashString = hex.EncodeToString(userdata.UsernameHash)
+	sharelink.ToUserHashString = recipientUsername_hash_string
+
+	UUIDFile := filespace.OwnedFilesUUIDs[filename_hash_string]
+
+	// if the invitor is the owner of the file
+	if UUIDFile != uuid.Nil {
+		// get everything needed for the file sharing
+		var share_link_content ShareLinkContent
+		share_link_content.FileUUID = filespace.OwnedFilesUUIDs[filename_hash_string]
+		share_link_content.FileMacUUID = filespace.OwnedFilesMacUUIDs[filename_hash_string]
+		share_link_content.FileKey = filespace.OwnedFilesKeys[filename_hash_string]
+		share_link_content.FileMacKey = filespace.OwnedFilesMacKeys[filename_hash_string]
+
+		// now the share_link_content get everything it needed
+		// update sharelink
+		sharelink.ShareLinkContentUUID = uuid.New()
+		sharelink.ShareLinkMacUUID = uuid.New()
+		sharelink.ShareLinkContentKey = userlib.RandomBytes(16)
+		sharelink.ShareLinkContentMackey = userlib.RandomBytes(16)
+
+		// ciper and store the shark_link_content
+		share_link_content_bytes, _ := json.Marshal(share_link_content)
+		share_link_content_ciper := userlib.SymEnc(sharelink.ShareLinkContentKey, userlib.RandomBytes(16), share_link_content_bytes)
+
+		userlib.DatastoreSet(sharelink.ShareLinkContentUUID, share_link_content_ciper)
+
+		share_link_content_mac, _ := userlib.HMACEval(sharelink.ShareLinkContentMackey, share_link_content_ciper)
+
+		userlib.DatastoreSet(sharelink.ShareLinkMacUUID, share_link_content_mac)
+
+		// sign something to provided authuority and integrity
+
+		SignContent := bytes.Join([][]byte{
+			[]byte(sharelink.FromUserHashString),
+			[]byte(sharelink.ToUserHashString),
+			sharelink.ShareLinkContentUUID[:],
+			sharelink.ShareLinkMacUUID[:],
+			sharelink.ShareLinkContentKey,
+			sharelink.ShareLinkContentMackey}, []byte(","))
+		sign, err := userlib.DSSign(userdata.DSSignKey, SignContent)
+		if err != nil {
+			return invitationPtr, err
+		}
+		sharelink.Sign = sign
+
+		// ciper the share link and store in datastore
+
+		share_link_bytes, _ := json.Marshal(sharelink)
+		share_link_ciper := userlib.SymEnc(sharelink_head.ShareLinkKey, userlib.RandomBytes(16), share_link_bytes)
+
+		userlib.DatastoreSet(sharelink_head.ShareLinkUUID, share_link_ciper)
+
+		// store the sharelinkhead
+		sharelink_head_bytes, err := json.Marshal(sharelink_head)
+
+		if err != nil {
+			return invitationPtr,err
+		}
+
+		sharelink_head_ciper, err := userlib.PKEEnc(recipient_public_encryption_key, sharelink_head_bytes)
+
+		if err != nil {
+			return invitationPtr, err
+		}
+
+		invitationPtr = uuid.New()
+
+		userlib.DatastoreSet(invitationPtr, sharelink_head_ciper)
+
+		// update the filespace
+		filespace.OwnedShareLinkUUID[recipientUsername_hash_string] = sharelink.ShareLinkContentUUID
+		filespace.OwnedFilesKeys[recipientUsername_hash_string] = sharelink.ShareLinkContentKey
+		userdata.UpdateFileSpace(filespace)
+	} else if filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil {
+		// if the user is shared with the file
+		sharelink_ciper, ok := userlib.DatastoreGet(filespace.GivenSharedLinkUUID[filename_hash_string])
+		if !ok {
+			return invitationPtr, errors.New("the sharelink does not exist")
+		}
+		sharelink_bytes := userlib.SymDec(filespace.GivenSharedLinkKey[filename_hash_string], sharelink_ciper)
+
+		var old_sharelink ShareLink
+
+		err = json.Unmarshal(sharelink_bytes, &old_sharelink)
+
+		if err != nil {
+			return invitationPtr, err
+		}
+
+		// update sharelink
+		sharelink.ShareLinkContentUUID = old_sharelink.ShareLinkContentUUID
+		sharelink.ShareLinkMacUUID = old_sharelink.ShareLinkMacUUID
+		sharelink.ShareLinkContentKey = old_sharelink.ShareLinkContentKey
+		sharelink.ShareLinkContentMackey = old_sharelink.ShareLinkContentMackey
+
+		// sign something to provided authuority and integrity
+
+		SignContent := bytes.Join([][]byte{
+			[]byte(sharelink.FromUserHashString),
+			[]byte(sharelink.ToUserHashString),
+			sharelink.ShareLinkContentUUID[:],
+			sharelink.ShareLinkMacUUID[:],
+			sharelink.ShareLinkContentKey,
+			sharelink.ShareLinkContentMackey}, []byte(","))
+		sign, err := userlib.DSSign(userdata.DSSignKey, SignContent)
+		if err != nil {
+			return invitationPtr, err
+		}
+		sharelink.Sign = sign
+
+		// ciper the share link and store in datastore
+
+		share_link_bytes, _ := json.Marshal(sharelink)
+		share_link_ciper := userlib.SymEnc(sharelink_head.ShareLinkKey, userlib.RandomBytes(16), share_link_bytes)
+
+		userlib.DatastoreSet(sharelink_head.ShareLinkUUID, share_link_ciper)
+
+		// store the sharelinkhead
+		sharelink_head_bytes, err := json.Marshal(sharelink_head)
+
+		if err != nil {
+			return invitationPtr, err
+		}
+
+		sharelink_head_ciper, err := userlib.PKEEnc(recipient_public_encryption_key, sharelink_head_bytes)
+
+		if err != nil {
+			return invitationPtr, err
+		}
+
+		invitationPtr = uuid.New()
+
+		userlib.DatastoreSet(invitationPtr, sharelink_head_ciper)
+
+		// update the filespace
+		filespace.OwnedShareLinkUUID[recipientUsername_hash_string] = sharelink.ShareLinkContentUUID
+		userdata.UpdateFileSpace(filespace)
+
+	} else {
+		return invitationPtr, errors.New("the provided file does not exist in the filespace")
+	}
+
+	return invitationPtr, nil
 }
 
 func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid.UUID, filename string) error {
+	// check if the owner already have the given filename in his filespace
+	filename_hash_string := hex.EncodeToString(userlib.Hash([]byte(filename)))
+
+	filespace, err := userdata.GetFileSpace()
+	if err != nil {
+		return err
+	}
+
+	if (filespace.OwnedFilesUUIDs[filename_hash_string] != uuid.Nil) || (filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil) {
+		return errors.New("the given filename already exists")
+	}
+
+	// check whether the invitation is still valid
+	sharelink_head_ciper, ok := userlib.DatastoreGet(invitationPtr)
+	if !ok {
+		return errors.New("the given sharelink head does not exist in the Datastore")
+	}
+
+	sharelink_head_bytes, err := userlib.PKEDec(userdata.EncryptionPrivateKey, sharelink_head_ciper)
+
+	if err != nil {
+		return errors.New("here")
+	}
+
+	var sharelink_head ShareLinkHead
+	err = json.Unmarshal(sharelink_head_bytes, &sharelink_head)
+	if err != nil {
+		return err
+	}
+
+	// get the sharelink
+
+	sharelink_ciper, ok := userlib.DatastoreGet(sharelink_head.ShareLinkUUID)
+
+	if !ok {
+		return errors.New("the given sharelink does not exist in the Datastore")
+	}
+
+	sharelink_bytes := userlib.SymDec(sharelink_head.ShareLinkKey, sharelink_ciper)
+
+	var sharelink ShareLink
+	err = json.Unmarshal(sharelink_bytes, &sharelink)
+
+	if err != nil {
+		return err
+	}
+
+	// check authority and integrity by check the sign
+
+	senderUsernameHashString := hex.EncodeToString(userlib.Hash([]byte(senderUsername)))
+	senderPublicSignKey, ok := userlib.KeystoreGet(senderUsernameHashString + "Signature")
+	if !ok {
+		return errors.New("cannot get sender's public sign key")
+	}
+
+	// verify the sign
+	SignContent := bytes.Join([][]byte{
+		[]byte(sharelink.FromUserHashString),
+		[]byte(sharelink.ToUserHashString),
+		sharelink.ShareLinkContentUUID[:],
+		sharelink.ShareLinkMacUUID[:],
+		sharelink.ShareLinkContentKey,
+		sharelink.ShareLinkContentMackey}, []byte(","))
+
+	err = userlib.DSVerify(senderPublicSignKey, SignContent, sharelink.Sign)
+	if err != nil {
+		return errors.New("digital sign verification fails")
+	}
+
+	// everthing is checked, accept the invitation
+
+	filespace.GivenSharedLinkUUID[filename_hash_string] = sharelink_head.ShareLinkUUID
+	filespace.GivenSharedLinkKey[filename_hash_string] = sharelink_head.ShareLinkKey
+
+	userdata.UpdateFileSpace(filespace)
+
 	return nil
 }
 
 func (userdata *User) RevokeAccess(filename string, recipientUsername string) error {
+	// first, check if the user is the fileowner
+	filespace, err := userdata.GetFileSpace()
+
+	if err != nil {
+		return err
+	}
+
+	filename_hash_string := hex.EncodeToString(userlib.Hash([]byte(filename)))
+
+	if filespace.OwnedFilesUUIDs[filename_hash_string] == uuid.Nil {
+		return errors.New("the user is not the owner of the file")
+	}
+
+	recipientUsername_hash_string := hex.EncodeToString(userlib.Hash([]byte(recipientUsername)))
+
+	if filespace.OwnedShareLinkUUID[recipientUsername_hash_string] == uuid.Nil {
+		return errors.New("the given filename is not currently shared with recipientUsername")
+	}
+
+	userlib.DatastoreDelete(filespace.OwnedShareLinkUUID[recipientUsername_hash_string])
+
 	return nil
 }
 
-// func main(){
-// 	x :=[]byte("hi")
-// 	y := []byte("hello")
-// 	a,_ := uuid.FromBytes(x)
-
-// 	b,_ := uuid.FromBytes(y)
-
+// func main() {
+// 	location := uuid.New()
+// 	data := []byte("hello world")
+// 	userlib.DatastoreSet(location, data)
+// 	userlib.DatastoreDelete(location)
+// 	_, ok := userlib.DatastoreGet(location)
+// 	if ok {
+// 		panic("the data should have been deleted")
+// 	}
+// 	fmt.Print(ok)
 // }
