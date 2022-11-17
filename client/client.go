@@ -258,7 +258,10 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 	userlib.DatastoreSet(UUID_filespace, filespace_ciper)
 
 	// store the mac of the file space
-	filespace_mac, _ := userlib.HMACEval(filespace_mac_key, filespace_ciper)
+	filespace_mac, err := userlib.HMACEval(filespace_mac_key, filespace_ciper)
+	if err != nil {
+		return userdataptr, nil
+	}
 
 	UUID_filespace_mac := uuid.New()
 	userdata.FileSpaceMacUUID = UUID_filespace_mac
@@ -291,7 +294,11 @@ func InitUser(username string, password string) (userdataptr *User, err error) {
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
 
-	mac, _ := userlib.HMACEval(mac_key, user_struct_ciper)
+	mac, err := userlib.HMACEval(mac_key, user_struct_ciper)
+
+	if err != nil {
+		return userdataptr, err
+	}
 
 	userlib.DatastoreSet(UUID_mac, mac)
 
@@ -312,14 +319,14 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	UUID_password, _ := uuid.FromBytes(getUUIDbytes(username))
 	password_hash, ok := userlib.DatastoreGet(UUID_password)
 
-	if ok == false {
+	if !ok {
 		return userdataptr, errors.New("the given User doesn't exist")
 	}
 
 	// then check if the password is correct
 	new_password_hash := userlib.Hash([]byte(password))
 	correct_flag := userlib.HMACEqual(password_hash, new_password_hash)
-	if correct_flag == false {
+	if !correct_flag {
 		return userdataptr, errors.New("uncorrect password")
 	}
 
@@ -339,7 +346,11 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 
 	mac_key := userlib.Argon2Key([]byte(password), []byte(username+"MAC"), 16)
 
-	new_mac, _ := userlib.HMACEval(mac_key, data)
+	new_mac, err := userlib.HMACEval(mac_key, data)
+
+	if err != nil {
+		return userdataptr, err
+	}
 
 	integrity_flag := userlib.HMACEqual(mac, new_mac)
 
@@ -381,7 +392,11 @@ func (userdata *User) CheckFileSpace() (err error) {
 	filespace_mac_key, _ := userlib.HashKDF(userdata.FileRootKey, []byte("mac"))
 	filespace_mac_key = filespace_mac_key[:16]
 
-	new_filespace_mac, _ := userlib.HMACEval(filespace_mac_key, filespace_ciper)
+	new_filespace_mac, err := userlib.HMACEval(filespace_mac_key, filespace_ciper)
+
+	if err != nil {
+		return err
+	}
 
 	integrity_flag := userlib.HMACEqual(filespace_mac, new_filespace_mac)
 
@@ -506,7 +521,11 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 		userlib.DatastoreSet(UUID_file, newFile_ciper)
 
 		// store the mac of the file struct
-		newFile_mac, _ := userlib.HMACEval(mac_key, newFile_ciper)
+		newFile_mac, err := userlib.HMACEval(mac_key, newFile_ciper)
+
+		if err != nil {
+			return err
+		}
 
 		UUID_file_strct_mac := uuid.New()
 		userlib.DatastoreSet(UUID_file_strct_mac, newFile_mac)
@@ -553,7 +572,11 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	userlib.DatastoreSet(UUID_file_content, content_ciper)
 
 	// store the mac
-	file_mac, _ := userlib.HMACEval(mac_key, content_ciper)
+	file_mac, err := userlib.HMACEval(mac_key, content_ciper)
+
+	if err != nil {
+		return err
+	}
 	UUID_file_mac := uuid.New()
 	newFile.Macs = append(newFile.Macs, UUID_file_mac)
 	userlib.DatastoreSet(UUID_file_mac, file_mac)
@@ -567,7 +590,11 @@ func (userdata *User) StoreFile(filename string, content []byte) (err error) {
 	userlib.DatastoreSet(UUID_file, newFile_ciper)
 
 	// store the mac of the file struct
-	newFile_mac, _ := userlib.HMACEval(mac_key, newFile_ciper)
+	newFile_mac, err := userlib.HMACEval(mac_key, newFile_ciper)
+
+	if err != nil {
+		return nil
+	}
 
 	userlib.DatastoreSet(UUID_file_struct_mac, newFile_mac)
 
@@ -615,11 +642,7 @@ func (filespace FileSpace) GetShareLinkContent(filename string, PrivateKey userl
 	}
 	// everything about the sharelink is checked
 
-
-
 	share_link_content_ciper, ok := userlib.DatastoreGet(sharelink.ShareLinkContentUUID)
-
-
 
 	if !ok {
 		return share_link_content, errors.New("the share link content does not exist in the Datastore")
@@ -687,7 +710,10 @@ func (filespace FileSpace) GetFileStruct(filename string) (file File, err error)
 		return file, errors.New("the File struct Mac doesn't exist")
 	}
 
-	new_file_mac, _ := userlib.HMACEval(FileMacKey, ciper_file)
+	new_file_mac, err := userlib.HMACEval(FileMacKey, ciper_file)
+	if err != nil {
+		return file, err
+	}
 	file_struct_integrity := userlib.HMACEqual(file_mac, new_file_mac)
 	// fmt.Print(new_file_mac,"\n")
 
@@ -765,7 +791,11 @@ func (file File) CheckFile(FileMacKey []byte) (err error) {
 			return errors.New("Some Mac of the file does not exist!")
 		}
 
-		new_content_mac, _ := userlib.HMACEval(FileMacKey, content)
+		new_content_mac, err := userlib.HMACEval(FileMacKey, content)
+
+		if err != nil {
+			return err
+		}
 
 		flag := userlib.HMACEqual(content_mac, new_content_mac)
 
@@ -831,7 +861,11 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 
 	// prepare the new content
 	ciper_content := userlib.SymEnc(FileKey, userlib.RandomBytes(16), content)
-	mac_content, _ := userlib.HMACEval(FileMacKey, ciper_content)
+	mac_content, err := userlib.HMACEval(FileMacKey, ciper_content)
+
+	if err != nil {
+		return err
+	}
 
 	UUID_content := uuid.New()
 	UUID_mac := uuid.New()
@@ -850,7 +884,11 @@ func (userdata *User) AppendToFile(filename string, content []byte) error {
 
 	userlib.DatastoreSet(FileUUID, file_ciper)
 
-	file_mac, _ := userlib.HMACEval(FileMacKey, file_ciper)
+	file_mac, err := userlib.HMACEval(FileMacKey, file_ciper)
+
+	if err != nil {
+		return err
+	}
 	userlib.DatastoreSet(FileMacUUID, file_mac)
 
 	return nil
@@ -883,7 +921,6 @@ func (userdata *User) LoadFile(filename string) (content []byte, err error) {
 		}
 	} else if filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil {
 		share_link_content, err := filespace.GetShareLinkContent(filename, userdata.EncryptionPrivateKey)
-
 
 		if err != nil {
 			return content, err
@@ -976,7 +1013,11 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 
 		userlib.DatastoreSet(sharelink.ShareLinkContentUUID, share_link_content_ciper)
 
-		share_link_content_mac, _ := userlib.HMACEval(sharelink.ShareLinkContentMackey, share_link_content_ciper)
+		share_link_content_mac, err := userlib.HMACEval(sharelink.ShareLinkContentMackey, share_link_content_ciper)
+
+		if err != nil {
+			return invitationPtr, err
+		}
 
 		userlib.DatastoreSet(sharelink.ShareLinkMacUUID, share_link_content_mac)
 
@@ -1006,7 +1047,7 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 		sharelink_head_bytes, err := json.Marshal(sharelink_head)
 
 		if err != nil {
-			return invitationPtr,err
+			return invitationPtr, err
 		}
 
 		sharelink_head_ciper, err := userlib.PKEEnc(recipient_public_encryption_key, sharelink_head_bytes)
@@ -1163,6 +1204,14 @@ func (userdata *User) AcceptInvitation(senderUsername string, invitationPtr uuid
 	err = userlib.DSVerify(senderPublicSignKey, SignContent, sharelink.Sign)
 	if err != nil {
 		return errors.New("digital sign verification fails")
+	}
+
+	// check if the invitation still valid
+
+	_,ok = userlib.DatastoreGet(sharelink.ShareLinkContentUUID)
+
+	if !ok{
+		return errors.New("the invitation has been revoked")
 	}
 
 	// everthing is checked, accept the invitation
