@@ -4,24 +4,24 @@ package client_test
 // break the autograder and everyone will be sad.
 
 import (
-    // Some imports use an underscore to prevent the compiler from complaining
-    // about unused imports.
-    _ "encoding/hex"
-    "errors"
-    _ "errors"
-    _ "strconv"
-    _ "strings"
-    "testing"
+	// Some imports use an underscore to prevent the compiler from complaining
+	// about unused imports.
+	_ "encoding/hex"
+	"errors"
+	_ "errors"
+	_ "strconv"
+	_ "strings"
+	"testing"
 
-    // A "dot" import is used here so that the functions in the ginko and gomega
-    // modules can be used without an identifier. For example, Describe() and
-    // Expect() instead of ginko.Describe() and gomega.Expect().
-    . "github.com/onsi/ginkgo"
-    . "github.com/onsi/gomega"
+	// A "dot" import is used here so that the functions in the ginko and gomega
+	// modules can be used without an identifier. For example, Describe() and
+	// Expect() instead of ginko.Describe() and gomega.Expect().
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 
-    userlib "github.com/cs161-staff/project2-userlib"
+	userlib "github.com/cs161-staff/project2-userlib"
 
-    "github.com/cs161-staff/project2-starter-code/client"
+	"github.com/cs161-staff/project2-starter-code/client"
 )
 
 func TestSetupAndExecution(t *testing.T) {

@@ -362,6 +362,7 @@ func GetUser(username string, password string) (userdataptr *User, err error) {
 	}
 
 	integrity_flag := userlib.HMACEqual(mac, new_mac)
+	// fmt.Print(integrity_flag, "\n", mac, "\n", new_mac, "\n")
 
 	if !integrity_flag {
 		return userdataptr, errors.New("the User struct has been tampered")
@@ -1082,8 +1083,8 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 		userlib.DatastoreSet(invitationPtr, sharelink_head_ciper)
 
 		// update the filespace
-		filespace.OwnedShareLinkUUID[recipientUsername_hash_string] = sharelink.ShareLinkContentUUID
-		filespace.OwnedFilesKeys[recipientUsername_hash_string] = sharelink.ShareLinkContentKey
+		filespace.OwnedShareLinkUUID[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkContentUUID
+		filespace.OwnedFilesKeys[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkContentKey
 		userdata.UpdateFileSpace(filespace)
 	} else if filespace.GivenSharedLinkUUID[filename_hash_string] != uuid.Nil {
 		// if the user is shared with the file
@@ -1147,7 +1148,7 @@ func (userdata *User) CreateInvitation(filename string, recipientUsername string
 		userlib.DatastoreSet(invitationPtr, sharelink_head_ciper)
 
 		// update the filespace
-		filespace.OwnedShareLinkUUID[recipientUsername_hash_string] = sharelink.ShareLinkContentUUID
+		filespace.OwnedShareLinkUUID[recipientUsername_hash_string+filename_hash_string] = sharelink.ShareLinkContentUUID
 		userdata.UpdateFileSpace(filespace)
 
 	} else {
@@ -1265,7 +1266,7 @@ func (userdata *User) RevokeAccess(filename string, recipientUsername string) er
 		return errors.New("the given filename is not currently shared with recipientUsername")
 	}
 
-	userlib.DatastoreDelete(filespace.OwnedShareLinkUUID[recipientUsername_hash_string])
+	userlib.DatastoreDelete(filespace.OwnedShareLinkUUID[recipientUsername_hash_string+filename_hash_string])
 
 	return nil
 }
