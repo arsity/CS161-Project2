@@ -705,7 +705,7 @@ var _ = Describe("Client Tests", func() {
                 Expect(err).To(BeNil())
             })
 
-            if bw2-bw1 < 100 {
+            if (bw2-bw1) < 100 {
                 err = nil
             } else {
                 err = errors.New("bandwidth test failed")
