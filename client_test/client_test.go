@@ -303,7 +303,7 @@ var _ = Describe("Client Tests", func() {
                 datastore[id] = datastore[id][0 : len(datastore[id])-1]
                 _, err = client.GetUser("alice", defaultPassword)
                 Expect(err).NotTo(BeNil())
-                val = ori                                         // revoke changes
+                datastore[id] = ori                               // revoke changes
                 _, err = client.GetUser("alice", defaultPassword) // should succeed
                 Expect(err).To(BeNil())
             }
@@ -380,13 +380,15 @@ var _ = Describe("Client Tests", func() {
                 datastore[id] = append(datastore[id], 0x8)
                 _, err = alice.LoadFile(aliceFile)
                 Expect(err).NotTo(BeNil())
-                datastore[id] = ori     // revoke changes
+                datastore[id] = ori // revoke changes
+                _, err = alice.LoadFile(aliceFile)
                 Expect(err).To(BeNil()) // should succeed
 
                 datastore[id] = datastore[id][0 : len(datastore[id])-1]
                 _, err = alice.LoadFile(aliceFile)
                 Expect(err).NotTo(BeNil())
-                datastore[id] = ori     // revoke changes
+                datastore[id] = ori // revoke changes
+                _, err = alice.LoadFile(aliceFile)
                 Expect(err).To(BeNil()) // should succeed
             }
         })
