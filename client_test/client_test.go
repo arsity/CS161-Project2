@@ -268,47 +268,47 @@ var _ = Describe("Client Tests", func() {
             _, err = client.InitUser(emptyString, defaultPassword)
             Expect(err).NotTo(BeNil())
         })
-        //
-        //Specify("client API error: GetUser.", func() {
-        //    userlib.DebugMsg("Initializing user Alice.")
-        //    _, err = client.InitUser("alice", defaultPassword)
-        //    Expect(err).To(BeNil())
-        //
-        //    userlib.DebugMsg("Getting user Bob, error expected.")
-        //    _, err = client.GetUser("bob", defaultPassword)
-        //    Expect(err).NotTo(BeNil())
-        //
-        //    userlib.DebugMsg("Getting user Alice with wrong password, error expected.")
-        //    _, err = client.GetUser("alice", anotherPassword)
-        //    Expect(err).NotTo(BeNil())
-        //
-        //    userlib.DebugMsg("Modify user profile of Alice, error expected.")
-        //    datastore := userlib.DatastoreGetMap()
-        //    for id, val := range datastore {
-        //        ori := val
-        //        datastore[id][0] ^= 0xff
-        //        _, err = client.GetUser("alice", defaultPassword)
-        //        Expect(err).NotTo(BeNil())
-        //        datastore[id][0] ^= 0xff                          // revoke changes
-        //        _, err = client.GetUser("alice", defaultPassword) // should succeed
-        //        Expect(err).To(BeNil())
-        //
-        //        datastore[id] = append(datastore[id], 0x9)
-        //        _, err = client.GetUser("alice", defaultPassword)
-        //        Expect(err).NotTo(BeNil())
-        //        datastore[id] = ori                               // revoke changes
-        //        _, err = client.GetUser("alice", defaultPassword) // should succeed
-        //        Expect(err).To(BeNil())
-        //
-        //        datastore[id] = datastore[id][0 : len(datastore[id])-1]
-        //        _, err = client.GetUser("alice", defaultPassword)
-        //        Expect(err).NotTo(BeNil())
-        //        datastore[id] = ori                               // revoke changes
-        //        _, err = client.GetUser("alice", defaultPassword) // should succeed
-        //        Expect(err).To(BeNil())
-        //    }
-        //
-        //})
+
+        Specify("client API error: GetUser.", func() {
+            userlib.DebugMsg("Initializing user Alice.")
+            _, err = client.InitUser("alice", defaultPassword)
+            Expect(err).To(BeNil())
+
+            userlib.DebugMsg("Getting user Bob, error expected.")
+            _, err = client.GetUser("bob", defaultPassword)
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Getting user Alice with wrong password, error expected.")
+            _, err = client.GetUser("alice", anotherPassword)
+            Expect(err).NotTo(BeNil())
+
+            userlib.DebugMsg("Modify user profile of Alice, error expected.")
+            datastore := userlib.DatastoreGetMap()
+            for id, val := range datastore {
+                ori := val
+                datastore[id][0] ^= 0xff
+                _, err = client.GetUser("alice", defaultPassword)
+                Expect(err).NotTo(BeNil())
+                datastore[id][0] ^= 0xff                          // revoke changes
+                _, err = client.GetUser("alice", defaultPassword) // should succeed
+                Expect(err).To(BeNil())
+
+                datastore[id] = append(datastore[id], 0x9)
+                _, err = client.GetUser("alice", defaultPassword)
+                Expect(err).NotTo(BeNil())
+                datastore[id] = ori                               // revoke changes
+                _, err = client.GetUser("alice", defaultPassword) // should succeed
+                Expect(err).To(BeNil())
+
+                datastore[id] = datastore[id][0 : len(datastore[id])-1]
+                _, err = client.GetUser("alice", defaultPassword)
+                Expect(err).NotTo(BeNil())
+                datastore[id] = ori                               // revoke changes
+                _, err = client.GetUser("alice", defaultPassword) // should succeed
+                Expect(err).To(BeNil())
+            }
+
+        })
 
         Specify("client API error: StoreFile", func() {
             userlib.DebugMsg("Initialize user and file.")
@@ -707,7 +707,7 @@ var _ = Describe("Client Tests", func() {
                 Expect(err).To(BeNil())
             })
 
-            if bw2-bw1 < 1000 {
+            if bw2-bw1 < 100 {
                 err = nil
             } else {
                 err = errors.New("bandwidth test failed")
