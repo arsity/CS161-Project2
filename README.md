@@ -10,4 +10,4 @@ Implementation in `client/client.go`, and tests in `client_test/client_test.go`.
 
 To test the implementation, run `go test -v` inside of the `client_test` directory.
 
-*Special thanks to @ChangyiYang*
+**Special thanks to** @ChangyiYang
